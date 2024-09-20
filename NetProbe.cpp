@@ -6,9 +6,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <getopt.h>
 
 using namespace std;  
-enum mode {SEND,RECEIVE,HOST};
+enum mode {SEND,RECV,HOST};
 
 void UPD_socket(int mode,char* address,int port){
     struct sockaddr_in UDP_Addr;
@@ -69,19 +70,30 @@ void TCP_socket(int mode,char* address,int port) {
 int main(int argc, char *argv[]) {
     int opt;
     enum mode mode;
-    while ((opt = getopt(argc, argv, "send:receive:host:")) != -1) {
+
+    static struct option long_options[] = {
+        {"send", no_argument, 0, 's'},
+        {"recv", no_argument, 0, 'r'},
+        {"host", no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+     while ((opt = getopt_long(argc, argv, "s:r:h:", long_options, NULL)) != -1) {
         switch (opt) {
-            case 'send':
-                cout<<"send"<<endl;
+            case 's':
+                cout << "send" << endl;
+                mode = SEND;
                 break;
-            case 'receive':
-                cout<<"receive"<<endl;
+            case 'r':
+                cout << "recv" << endl;
+                mode = RECV;
                 break;
-            case 'host':
-                cout<<"host"<<endl;
+            case 'h':
+                cout << "host" << endl;
+                mode = HOST;
                 break;
             default:
-                cout<<"Please Select Mode"<<endl;
+                cout << "Please Select Mode" << endl;
                 return EXIT_FAILURE;
         }
     }
