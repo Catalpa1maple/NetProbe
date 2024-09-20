@@ -3,4 +3,6 @@
 *.out
 *.app
 *.o
+*.json
 NetProbe
+README.md
