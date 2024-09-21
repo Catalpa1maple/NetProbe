@@ -85,7 +85,8 @@ int main(int argc, char *argv[]) {
                     return EXIT_FAILURE;
             }
         }
-        TCP_socket(mode, rhost, rport);
+        if (proto == "TCP") TCP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
+        // else UDP_socket(mode, stat, rhost, rport);
     } else if (mode_str == "-recv") {
         mode = RECV;
         while ((opt = getopt_long(argc, argv, "s:l:q:c:k:e:", options, NULL)) != -1) {
@@ -119,6 +120,8 @@ int main(int argc, char *argv[]) {
                     return EXIT_FAILURE;
             }
         }
+        if (proto == "TCP") TCP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
+
     } else if (mode_str == "-host") {
         mode = HOST;
          while ((opt = getopt_long(argc, argv, "h:", options, NULL)) != -1) {

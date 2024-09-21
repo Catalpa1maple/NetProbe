@@ -5,6 +5,6 @@
 
 enum Mode { SEND, RECV };
 
-void TCP_socket(int mode, const std::string& rhost, int rport);
+void TCP_socket(int mode,int stat, const std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize);
 
 #endif
