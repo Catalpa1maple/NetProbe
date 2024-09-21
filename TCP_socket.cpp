@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "TCP_socket.h"
 
 void TCP_socket(int mode,char* address,int port) {
     struct sockaddr_in TCP_Addr;

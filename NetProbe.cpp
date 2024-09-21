@@ -4,8 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
-#include "TCP_socket.cpp"
-#include "UDP_socket.cpp"
+#include "TCP_socket.h"
+#include "UDP_socket.h"
 
 using namespace std;  
 enum mode {NONE,SEND,RECV,HOST};
@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
                     return EXIT_FAILURE;
             }
         }
+        TCP_socket(mode, rhost, rport);
     } else if (mode_str == "-recv") {
         mode = RECV;
         while ((opt = getopt_long(argc, argv, "s:l:q:c:k:e:", options, NULL)) != -1) {

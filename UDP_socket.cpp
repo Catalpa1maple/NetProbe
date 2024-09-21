@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "UDP_socket.h"
 
 void UPD_socket(int mode,char* address,int port){
     struct sockaddr_in UDP_Addr;
