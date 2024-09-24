@@ -1,11 +1,10 @@
 #include <iostream>
 #include <unistd.h>
 #include <string>
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "TCP_socket.h"
+#include "Socket_Protocol.h"
 
 void TCP_socket(int mode,int stat, const std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
     struct sockaddr_in TCP_Addr;
@@ -19,6 +18,7 @@ void TCP_socket(int mode,int stat, const std::string& host, int port, int pktsiz
         std::cerr << "Failed to create TCP socket" << std::endl;
         return;
     }
+    std::cout << "TCP socket created" << std::endl;
 
     if(mode == RECV){ //As RECV mode be consider as Server
     if (bind(TCP_Socket, (struct sockaddr*)&TCP_Addr, sizeof(TCP_Addr)) < 0) {
@@ -54,4 +54,31 @@ void TCP_socket(int mode,int stat, const std::string& host, int port, int pktsiz
 
     // Close the socket after use
     close(TCP_Socket);
+}
+
+
+void UDP_socket(int mode,int stat, const std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
+    struct sockaddr_in UDP_Addr;
+    memset (&UDP_Addr, 0, sizeof(UDP_Addr)); 
+    UDP_Addr.sin_family = AF_INET;
+    UDP_Addr.sin_port = htons(port); 
+    UDP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
+
+    int UDP_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (UDP_Socket < 0) {
+        std::cerr << "Failed to create UDP socket" << std::endl;
+        return;
+    }
+    std::cout << "UDP socket created" << std::endl;
+
+    if(mode == RECV) //As RECV mode be consider as Server
+    if (bind(UDP_Socket, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0) {
+         std::cerr << "Failed to bind UDP socket" <<  std::endl;
+        close(UDP_Socket);
+        return;
+    }
+
+     std::cout << "UDP socket created and bound to " << host << ":" << port <<  std::endl;
+    // Close the socket after use
+    close(UDP_Socket);
 }

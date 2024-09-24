@@ -4,11 +4,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
-#include "TCP_socket.h"
-#include "UDP_socket.h"
+#include "Socket_Protocol.h"
 
 using namespace std;  
-enum mode {NONE,SEND,RECV,HOST};
 
 int main(int argc, char *argv[]) {
     int opt;
@@ -43,11 +41,16 @@ int main(int argc, char *argv[]) {
 
     string mode_str = argv[1];//Read the mode from the command line
     optind = 2;
-
+    int index = 0;
+    int option_index = 0;
     if (mode_str == "-send") {
         mode = SEND;
-        while ((opt = getopt_long(argc, argv, "s:r:p:c:z:a:n:u:", options, NULL)) != -1) {
-            switch (opt) {
+        while ((opt = getopt_long_only(argc, argv, "", options, &option_index)) != -1) {
+            // if(index == 0){
+            //     index++;
+            //     continue;
+            // }
+            switch (opt) { 
                 case 's':
                     // cout << argv[optind-1] << endl;
                     stat = atoi(argv[optind]);
@@ -86,7 +89,7 @@ int main(int argc, char *argv[]) {
             }
         }
         if (proto == "TCP") TCP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
-        // else UDP_socket(mode, stat, rhost, rport);
+        else UDP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
     } else if (mode_str == "-recv") {
         mode = RECV;
         while ((opt = getopt_long(argc, argv, "s:l:q:c:k:e:", options, NULL)) != -1) {
