@@ -24,6 +24,9 @@ int main(int argc, char *argv[]) {
     string hostname = "localhost"; // Default localhost
 
     static struct option options[] = {
+            {"send",     no_argument, 0, '1'},
+            {"recv",     no_argument, 0, '2'},
+            {"host",     no_argument, 0, '3'},
             {"stat",     required_argument, 0, 's'},
             {"rhost",    required_argument, 0, 'r'},
             {"rport",    required_argument, 0, 'p'},
@@ -38,107 +41,76 @@ int main(int argc, char *argv[]) {
             {"host",     required_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
-
-    string mode_str = argv[1];//Read the mode from the command line
-    optind = 2;
-    int index = 0;
-    int option_index = 0;
-    if (mode_str == "-send") {
-        mode = SEND;
+        int option_index = 0;
         while ((opt = getopt_long_only(argc, argv, "", options, &option_index)) != -1) {
-            // if(index == 0){
-            //     index++;
-            //     continue;
-            // }
             switch (opt) { 
+                case '1':
+                    mode = SEND;
+                    break;
+                case '2':
+                    mode = RECV;
+                    break;
+                case '3':
+                    mode = HOST;
+                    break;
                 case 's':
-                    // cout << argv[optind-1] << endl;
-                    stat = atoi(argv[optind]);
+                    stat = atoi(optarg);
                     cout << "stat: " << stat << endl;
                     break;
                 case 'r':
-                    rhost = argv[optind];
+                    rhost = optarg;
                     cout << "rhost: " << rhost << endl;
                     break;
                 case 'p':
-                    rport = atoi(argv[optind]);
+                    rport = atoi(optarg);
                     cout << "rport: " << rport << endl;
                     break;
                 case 'c':
-                    proto = argv[optind];
+                    proto = optarg;
                     cout << "proto: " << proto << endl;
                     break;
                 case 'z':
-                    pktsize = atoi(argv[optind]);
+                    pktsize = atoi(optarg);
                     cout << "pktsize: " << pktsize << endl;
                     break;
                 case 'a':
-                    pktrate = atoi(argv[optind]);
+                    pktrate = atoi(optarg);
                     cout << "pktrate: " << pktrate << endl;
                     break;
                 case 'n':
-                    pktnum = atoi(argv[optind]);
+                    pktnum = atoi(optarg);
                     cout << "pktnum: " << pktnum << endl;
                     break;
-                case 'u':  sbufsize = atoi(argv[optind]);
+                case 'u':  sbufsize = atoi(optarg);
                     cout << "sbufsize: " << sbufsize << endl;
                     break;
+                case 'l':
+                    lhost = optarg;
+                    cout << "lhost: " << lhost << endl;
+                    break;
+                case 'q':
+                    lport = atoi(optarg);
+                    cout << "lport: " << lport << endl;
+                    break;
+                case 'k':
+                    pktsize = atoi(optarg);
+                    cout << "pktsize: " << pktsize << endl;
+                    break;
+                case 'e':
+                    rbufsize = atoi(optarg);
+                    cout << "rbufsize: " << rbufsize << endl;
+                    break;
+                case 'h':
+                    rhost = optarg;
+                    break;
                 default:
-                    cout << "Invalid send option" << endl;
+                    cout << "Invalid option" << endl;
                     return EXIT_FAILURE;
             }
         }
         if (proto == "TCP") TCP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
         else UDP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
-    } else if (mode_str == "-recv") {
-        mode = RECV;
-        while ((opt = getopt_long(argc, argv, "s:l:q:c:k:e:", options, NULL)) != -1) {
-            switch (opt) {
-                case 's':
-                    stat = atoi(argv[optind]);
-                    cout << "stat: " << stat << endl;
-                    break;
-                case 'l':
-                    lhost = argv[optind];
-                    cout << "lhost: " << lhost << endl;
-                    break;
-                case 'q':
-                    lport = atoi(argv[optind]);
-                    cout << "lport: " << lport << endl;
-                    break;
-                case 'c':
-                    proto = argv[optind];
-                    cout << "proto: " << proto << endl;
-                    break;
-                case 'k':
-                    pktsize = atoi(argv[optind]);
-                    cout << "pktsize: " << pktsize << endl;
-                    break;
-                case 'e':
-                    rbufsize = atoi(argv[optind]);
-                    cout << "rbufsize: " << rbufsize << endl;
-                    break;
-                default:
-                    cout << "Invalid recv option" << endl;
-                    return EXIT_FAILURE;
-            }
-        }
-        if (proto == "TCP") TCP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
+   
+    return 0;
 
-    } else if (mode_str == "-host") {
-        mode = HOST;
-         while ((opt = getopt_long(argc, argv, "h:", options, NULL)) != -1) {
-            switch (opt) {
-                case 'h':
-                    rhost = argv[optind];
-                    break;
-                default:
-                    cout << "Invalid host option" << endl;
-                    return EXIT_FAILURE;
-                }
-            }
-    } else {
-        cout << "Invalid mode" << endl;
-        return EXIT_FAILURE;
-    }
 }
