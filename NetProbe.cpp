@@ -5,6 +5,7 @@
 #include <cstring>
 #include <getopt.h>
 #include "Socket_Protocol.h"
+#define infinite 1024
 
 using namespace std;  
 
@@ -18,9 +19,9 @@ int main(int argc, char *argv[]) {
     string proto = "UDP"; // Default UDP
     int pktsize = 1000; // Default 1000 bytes
     int pktrate = 1000; // Default 1000 bytes/second
-    int pktnum = 0; // Default 0 (infinite)
-    int sbufsize;
-    int rbufsize;
+    int pktnum = infinite; // Default 0 (infinite)
+    int sbufsize = 0;
+    int rbufsize = 0;
     string hostname = "localhost"; // Default localhost
 
     static struct option options[] = {
@@ -67,6 +68,10 @@ int main(int argc, char *argv[]) {
                     break;
                 case 'c':
                     proto = optarg;
+                    if(proto != "TCP" && proto != "UDP") {
+                        cout << "Invalid protocol" << endl;
+                        return EXIT_FAILURE;
+                    }
                     cout << "proto: " << proto << endl;
                     break;
                 case 'z':
@@ -108,8 +113,21 @@ int main(int argc, char *argv[]) {
                     return EXIT_FAILURE;
             }
         }
-        if (proto == "TCP") TCP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
-        else UDP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
+        if (mode == SEND) {
+            if (proto == "TCP") TCP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
+            else if (proto == "UDP")UDP_socket(mode, stat, rhost, rport, pktsize, pktrate, pktnum, sbufsize);
+        }
+        else if (mode == RECV) {
+            if (proto == "TCP") TCP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
+            else if (proto == "UDP")UDP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
+        }
+        else if (mode == HOST) {// TODO
+        }
+        else {
+            cout << "Invalid mode" << endl;
+            return EXIT_FAILURE;
+        }
+        
    
     return 0;
 
