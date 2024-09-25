@@ -4,7 +4,24 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h> // Include this header for gethostbyname
 #include "Socket_Protocol.h"
+
+void stat(int stat){
+    int elapsed = 0;
+    int pkts = 0;
+    int lossnum = 0;
+    double lossrate = 0;
+    int rate = 0;
+    int jitter = 0;
+    std::string rate_unit = "Mbps";
+    std::cout << "Elapsed " << elapsed << 
+        "s Pkts " << pkts << " Lost "<< lossnum
+        << ", " << lossrate << "% Rate" << rate
+        << rate_unit << " Jitter " <<  jitter << "ms"
+    << std::endl;
+}
+
 
 void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
     struct sockaddr_in TCP_Addr;
@@ -55,8 +72,9 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
 
 void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
-    // std::cout << host.c_str() << "  " << port <<std::endl;
     if(host == "localhost") host = "127.0.0.1";
+    // struct hostent* addr = gethostbyname(host.c_str());
+    // std::cout << addr->h_name << std::endl;
     struct sockaddr_in UDP_Addr;
     memset (&UDP_Addr, 0, sizeof(UDP_Addr)); 
     UDP_Addr.sin_family = AF_INET;
@@ -69,7 +87,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
 
-    std::string buf[pktsize]; // Buffer to store data
+    char buf[pktsize]; // Buffer to store data
     if(mode == RECV){ //As RECV mode be consider as Server
         // std::cout << UDP_Addr.sin_addr.s_addr<<"   "<<UDP_Addr.sin_port <<std::endl;
         if (bind(UDP_Socket, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0) {
@@ -80,24 +98,27 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         std::cout << "UDP socket created and bound to " << host << ":" << port <<  std::endl;
     
         if (!bufsize)setsockopt(UDP_Socket, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
-        if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, (socklen_t*)sizeof(UDP_Addr)) < 0){
-            std::cerr << "Failed to receive data" << strerror(errno) <<std::endl;
+        socklen_t len = sizeof(UDP_Addr);
+        if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, &len) < 0){
+            std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
             close(UDP_Socket);
             return;
         }
-        // std::cout << "Data received: " << buf << std::endl;
-        // close(UDP_Socket);
+        std::cout << "Data received: " << sizeof(buf) << " bytes" << std::endl;
+        close(UDP_Socket);
         // while (true)
         // {
         //     recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, (socklen_t*)sizeof(UDP_Addr));
-        // }}
-    
+        //     std::cout << "Data received: " << buf << std::endl;
+        //     usleep(1000000);
+        // }
+    }
     else if(mode == SEND){ //As SEND mode be consider as Client
         if (!bufsize) setsockopt(UDP_Socket, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
         memset(&buf, 'A', pktsize); // Fill buffer with data
         for (int i = 0; i < pktnum; i++) {
             if(sendto(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0){
-                std::cerr << "Failed to send data" << strerror(errno) <<std::endl;
+                std::cerr << "Failed to send data " << strerror(errno) <<std::endl;
                 close(UDP_Socket);
                 return;
             }

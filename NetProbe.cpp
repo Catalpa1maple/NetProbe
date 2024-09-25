@@ -5,7 +5,7 @@
 #include <cstring>
 #include <getopt.h>
 #include "Socket_Protocol.h"
-#define infinite 1024
+#define infinite 10
 
 using namespace std;  
 
