@@ -4,22 +4,31 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h> // Include this header for gethostbyname
+#include <netdb.h> 
+#include <sys/time.h>
+#include <format>
+#include <iomanip>
 #include "Socket_Protocol.h"
 
-void stat(int stat){
-    int elapsed = 0;
-    int pkts = 0;
-    int lossnum = 0;
-    double lossrate = 0;
-    int rate = 0;
-    int jitter = 0;
-    std::string rate_unit = "Mbps";
-    std::cout << "Elapsed " << elapsed << 
-        "s Pkts " << pkts << " Lost "<< lossnum
-        << ", " << lossrate << "% Rate" << rate
-        << rate_unit << " Jitter " <<  jitter << "ms"
-    << std::endl;
+void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, int rate, int jitter, int index){
+    //stat unit is second
+    double elap = (double)stat*index;
+    std::string rate_unit = "Bps";
+    if(mode == RECV){
+        std::cout << "Elapsed " << std::fixed 
+            << std::setprecision(1) << elap << 
+            "s Pkts " << pkts << " Lost "<< lossnum
+            << ", " << lossrate << "% Rate " << rate
+            << rate_unit << " Jitter " <<  jitter << "ms"
+        << std::endl;
+    }
+    else if(mode == SEND){
+        std::cout << "Elapsed " << std::fixed
+            << std::setprecision(1)
+            << elap << "s Rate " 
+            << rate << rate_unit 
+        << std::endl;
+    }
 }
 
 
@@ -114,15 +123,38 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         // }
     }
     else if(mode == SEND){ //As SEND mode be consider as Client
+        struct timeval StartTime, SentTime; 
+        float SendDelay = 0.0;
+        
+        if(pktrate != 0) {
+            SendDelay = 1000000*(float)pktsize/pktrate;} //Set Delay for packet rate
+        // std::cout << SendDelay << std::endl;
         if (!bufsize) setsockopt(UDP_Socket, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
+        
         memset(&buf, 'A', pktsize); // Fill buffer with data
+        std::cout << pktsize*pktnum << " bytes data to be sent" << std::endl;
+        int stat_index = 1;
+
         for (int i = 0; i < pktnum; i++) {
+            gettimeofday(&StartTime, NULL);     // Get start time
             if(sendto(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0){
                 std::cerr << "Failed to send data " << strerror(errno) <<std::endl;
-                close(UDP_Socket);
-                return;
-            }
-            if(pktrate != 0)usleep(1000000*pktrate/pktsize); // Sleep for the specified packet rate
+                close(UDP_Socket);return;}
+            // std::cout << "pkt " << i << " sent" << std::endl;
+
+            gettimeofday(&SentTime, NULL);      // Get sent time
+            
+            double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+            double stat_time = stat*1000;  //Set stat time in us   
+
+            while (elapsed < SendDelay) {    
+                    elapsed += 10000; //10ms 
+                    usleep(10000);
+                    if(stat_time < elapsed){
+                        stat_cout(SEND,(double)stat/1000,0,0,0,pktrate,0,stat_index);
+                        stat_time += stat_time;
+                        stat_index++;
+            }} 
         }
         std::cout << "Data sent: " << sizeof(buf)*pktnum << " bytes"<< std::endl;
         close(UDP_Socket);
