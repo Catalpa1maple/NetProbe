@@ -45,6 +45,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
     
+    char buf[pktsize];
     if(mode == RECV){ //As RECV mode be consider as Server
         if (bind(TCP_Socket, (struct sockaddr*)&TCP_Addr, sizeof(TCP_Addr)) < 0) {
             std::cerr << "Failed to bind TCP socket" << std::endl;
@@ -71,8 +72,41 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
     
     else if(mode == SEND){ //As SEND mode be consider as Client
+        struct timeval StartTime, SentTime; 
+        float SendDelay = 0.0;
+        
+        if(pktrate != 0) {
+            SendDelay = 1000000*(float)pktsize/pktrate;} //Set Delay for packet rate
+        // std::cout << SendDelay << std::endl;
+        if (!bufsize) setsockopt(TCP_Socket, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
+        
+        memset(&buf, 'A', pktsize); // Fill buffer with data
+        std::cout << pktsize*pktnum << " bytes data to be sent" << std::endl;
+        int stat_index = 1;
 
+        for (int i = 0; i < pktnum; i++) {
+            gettimeofday(&StartTime, NULL);     // Get start time
+            if(send(TCP_Socket, &buf, pktsize, 0) < 0){
+                std::cerr << "Failed to send data " << strerror(errno) <<std::endl;
+                close(TCP_Socket);return;}
+            // std::cout << "pkt " << i << " sent" << std::endl;
 
+            gettimeofday(&SentTime, NULL);      // Get sent time
+            
+            double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+            double stat_time = stat*1000;  //Set stat time in us   
+
+            while (elapsed < SendDelay) {    
+                    elapsed += 10000; //10ms 
+                    usleep(10000);
+                    if(stat_time < elapsed){
+                        stat_cout(SEND,(double)stat/1000,0,0,0,pktrate,0,stat_index);
+                        stat_time += stat_time;
+                        stat_index++;
+            }} 
+        }
+        std::cout << "Data sent: " << sizeof(buf)*pktnum << " bytes"<< std::endl;
+        close(TCP_Socket);
     }
 
     // Close the socket after use
@@ -133,28 +167,40 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         
         memset(&buf, 'A', pktsize); // Fill buffer with data
         std::cout << pktsize*pktnum << " bytes data to be sent" << std::endl;
-        int stat_index = 1;
+        int stat_index = 1,pkt_num = 1;
+        gettimeofday(&StartTime, NULL);         // Get intial start time   
+        double stat_time = stat*1000;
 
         for (int i = 0; i < pktnum; i++) {
-            gettimeofday(&StartTime, NULL);     // Get start time
+            if(pktrate != 0)gettimeofday(&StartTime, NULL);     // Get start time if rate is set
             if(sendto(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0){
                 std::cerr << "Failed to send data " << strerror(errno) <<std::endl;
                 close(UDP_Socket);return;}
-            // std::cout << "pkt " << i << " sent" << std::endl;
-
-            gettimeofday(&SentTime, NULL);      // Get sent time
             
-            double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
-            double stat_time = stat*1000;  //Set stat time in us   
-
-            while (elapsed < SendDelay) {    
-                    elapsed += 10000; //10ms 
-                    usleep(10000);
-                    if(stat_time < elapsed){
-                        stat_cout(SEND,(double)stat/1000,0,0,0,pktrate,0,stat_index);
-                        stat_time += stat_time;
-                        stat_index++;
-            }} 
+            if(pktrate != 0){
+                gettimeofday(&SentTime, NULL);      // Get sent time if rate is set
+                double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                stat_time = stat*1000;  //Set stat time in us
+                while (elapsed < SendDelay) {    
+                        elapsed += 10000; //10ms 
+                        usleep(10000);
+                        if(stat_time < elapsed){
+                            stat_cout(SEND,(double)stat/1000,0,0,0,pktrate,0,stat_index);
+                            stat_time += stat_time;
+                            stat_index++;}}
+            }
+            if (pktrate == 0){
+                gettimeofday(&SentTime, NULL);
+                double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                stat_time =(double)stat/1000;
+                if( stat_time*1000000 < elapsed){
+                    pkt_num = i - pkt_num;
+                    double rate = pkt_num*1000000/(double)stat_time;
+                    stat_cout(SEND,stat_time,0,0,0,rate,0,stat_index);
+                    stat_index++;
+                    gettimeofday(&StartTime, NULL);
+                }
+            } 
         }
         std::cout << "Data sent: " << sizeof(buf)*pktnum << " bytes"<< std::endl;
         close(UDP_Socket);
