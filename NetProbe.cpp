@@ -39,7 +39,6 @@ int main(int argc, char *argv[]) {
             {"lhost",    required_argument, 0, 'l'},
             {"lport",    required_argument, 0, 'q'},
             {"rbufsize", required_argument, 0, 'e'},
-            {"host",     required_argument, 0, 'h'},
             {0, 0, 0, 0}
         };
         int option_index = 0;
@@ -53,6 +52,11 @@ int main(int argc, char *argv[]) {
                     break;
                 case '3':
                     mode = HOST;
+                    if(argv[2] == NULL) {
+                        cout << "Invalid option" << endl;
+                        return EXIT_FAILURE;
+                    }
+                    hostname = argv[3];
                     break;
                 case 's':
                     stat = atoi(optarg);
@@ -106,7 +110,7 @@ int main(int argc, char *argv[]) {
                     cout << "rbufsize: " << rbufsize << endl;
                     break;
                 case 'h':
-                    rhost = optarg;
+                    hostname = optarg;
                     break;
                 default:
                     cout << "Invalid option" << endl;
@@ -121,7 +125,8 @@ int main(int argc, char *argv[]) {
             if (proto == "TCP") TCP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
             else if (proto == "UDP")UDP_socket(mode, stat, lhost, lport, pktsize, pktrate, pktnum, rbufsize);
         }
-        else if (mode == HOST) {// TODO
+        else if (mode == HOST) {
+            hostname = getHost(hostname);
         }
         else {
             cout << "Invalid mode" << endl;

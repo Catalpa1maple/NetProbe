@@ -115,7 +115,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
 
 void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
-    if(host == "localhost") host = "127.0.0.1";
+    host = getHost(host);
     // struct hostent* addr = gethostbyname(host.c_str());
     // std::cout << addr->h_name << std::endl;
     struct sockaddr_in UDP_Addr;
@@ -130,9 +130,8 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
 
-    char buf[pktsize]; // Buffer to store data
+    int buf[pktsize]; // Buffer to store data
     if(mode == RECV){ //As RECV mode be consider as Server
-        // std::cout << UDP_Addr.sin_addr.s_addr<<"   "<<UDP_Addr.sin_port <<std::endl;
         if (bind(UDP_Socket, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0) {
             std::cerr << "Failed to bind UDP socket" <<  std::endl;
             close(UDP_Socket);
@@ -142,36 +141,58 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
     
         if (!bufsize)setsockopt(UDP_Socket, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
         socklen_t len = sizeof(UDP_Addr);
-        if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, &len) < 0){
-            std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
-            close(UDP_Socket);
-            return;
+        int pkt_index = 0, pkt_loss = 0;        //For checking loss
+        int pkt_num = 0, stat_index = 1;
+        struct timeval StartTime, SentTime;
+        gettimeofday(&StartTime, NULL);         // Get intial start time
+        double stat_time =(double)stat/1000;
+        while (true)
+        {
+            if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, &len) < 0){
+                std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
+                close(UDP_Socket);
+                return;
+            }pkt_index++; pkt_num++;//Pkt num suggests nth pkt sent
+
+            if (buf[0] != pkt_index) pkt_loss++; //Check loss
+            // std::cout << "pkt " << pkt_index << std::endl;
+            // std::cout << "buf " << buf[0] << std::endl;
+
+            gettimeofday(&SentTime, NULL);      // Get sent time
+            double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                if( stat_time*1000000 < elapsed){       //Check is it time to print stat
+                    // std::cout << pkt_index << " " << pkt_num  << std::endl;
+                    double rate = pkt_num*sizeof(buf)/(double)stat_time;
+                    pkt_num = 0;    //Reset pkt num
+                    double loss_rate = pkt_loss*100/pkt_index;
+                    stat_cout(RECV,stat_time,pkt_index,pkt_loss,loss_rate,rate,0,stat_index);
+                    stat_index++;
+                    gettimeofday(&StartTime, NULL);
+                }
         }
-        std::cout << "Data received: " << sizeof(buf) << " bytes" << std::endl;
-        close(UDP_Socket);
-        // while (true)
-        // {
-        //     recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, (socklen_t*)sizeof(UDP_Addr));
-        //     std::cout << "Data received: " << buf << std::endl;
-        //     usleep(1000000);
-        // }
     }
+
+
     else if(mode == SEND){ //As SEND mode be consider as Client
-        struct timeval StartTime, SentTime; 
+         
         float SendDelay = 0.0;
-        
         if(pktrate != 0) {
             SendDelay = 1000000*(float)pktsize/pktrate;} //Set Delay for packet rate
         // std::cout << SendDelay << std::endl;
         if (!bufsize) setsockopt(UDP_Socket, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
         
-        memset(&buf, 'A', pktsize); // Fill buffer with data
-        std::cout << pktsize*pktnum << " bytes data to be sent" << std::endl;
-        int stat_index = 1,pkt_num = 1;
+        // std::cout << pktsize*pktnum << " bytes data to be sent" << std::endl;
+        int stat_index = 1,pkt_num = 0;
+        struct timeval StartTime, SentTime;
         gettimeofday(&StartTime, NULL);         // Get intial start time   
         double stat_time = stat*1000;
 
         for (int i = 0; i < pktnum; i++) {
+            
+            memset(buf,i+1,sizeof(buf)); // Fill buffer 
+            buf[0] = i+1;                //Set pkt index
+            // std::cout << buf[0] << std::endl;
+
             if(pktrate != 0)gettimeofday(&StartTime, NULL);     // Get start time if rate is set
             if(sendto(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0){
                 std::cerr << "Failed to send data " << strerror(errno) <<std::endl;
@@ -194,7 +215,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
                 stat_time =(double)stat/1000;
                 if( stat_time*1000000 < elapsed){
-                    pkt_num = i - pkt_num;
+                    pkt_num = i - pkt_num + 1;
                     double rate = pkt_num*1000000/(double)stat_time;
                     stat_cout(SEND,stat_time,0,0,0,rate,0,stat_index);
                     stat_index++;
@@ -202,10 +223,32 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 }
             } 
         }
-        std::cout << "Data sent: " << sizeof(buf)*pktnum << " bytes"<< std::endl;
+        // std::cout << "Data sent: " << sizeof(buf)*pktnum << " bytes"<< std::endl;
         close(UDP_Socket);
     }
     
     // Close the socket after use
     close(UDP_Socket);
+}
+
+
+char getHost(std::string& host){
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET; 
+    hints.ai_socktype = SOCK_STREAM;
+
+    int status = getaddrinfo(host.c_str(), nullptr, &hints, &res);
+    if (status != 0) {
+        std::cerr << "getaddrinfo: " << gai_strerror(status) << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    char ipstr[INET_ADDRSTRLEN];
+    for (struct addrinfo* p = res; p != nullptr; p = p->ai_next) {
+        void* addr = &((struct sockaddr_in*)p->ai_addr)->sin_addr;
+        inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
+        std::cout << host << " resolved to: " << ipstr << std::endl;
+    }
+    return *ipstr;
 }
