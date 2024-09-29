@@ -10,10 +10,18 @@
 #include <iomanip>
 #include "Socket_Protocol.h"
 
-void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, int rate, int jitter, int index){
+void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, double rate, int jitter, int index){
     //stat unit is second
     double elap = (double)stat*index;
-    std::string rate_unit = "Bps";
+    std::string rate_unit = "Kbps";
+    rate = rate*8;
+    // std::cout << rate << std::endl;
+    if(rate > (double)1000){
+        rate = (rate/1000);
+        rate_unit = "Mbps";
+    }
+
+
     if(mode == RECV){
         std::cout << "Elapsed " << std::fixed 
             << std::setprecision(1) << elap << 
@@ -33,12 +41,16 @@ void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, in
 
 
 void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
-    host = getHost(host);
     struct sockaddr_in TCP_Addr;
     memset(&TCP_Addr, 0, sizeof(TCP_Addr));
     TCP_Addr.sin_family = AF_INET;
     TCP_Addr.sin_port = htons(port);
-    TCP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
+    if( host == "IN_ADDR_ANY") {
+        TCP_Addr.sin_addr.s_addr = INADDR_ANY;
+    }else{
+        host = getHost(host);
+        TCP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
+    }
 
     int TCP_Socket = socket(AF_INET, SOCK_STREAM, 0);
     if (TCP_Socket < 0) {
@@ -46,7 +58,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
     
-    int buf[pktsize];
+    int buf[pktsize/4];
     if(mode == RECV){ //As RECV mode be consider as Server
         if (bind(TCP_Socket, (struct sockaddr*)&TCP_Addr, sizeof(TCP_Addr)) < 0) {
             std::cerr << "Failed to bind TCP socket" << std::endl;
@@ -90,9 +102,12 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
             }pkt_index++; pkt_num++;//Pkt num suggests nth pkt sent
             total_bytes += r;       //Sum up r to total bytes
 
-            if(r == 0){ //Reset if no data received
-                std::cout << "Recevied " << total_bytes << "Bytes" << std::endl;
-                total_bytes = 0;pkt_index = 0;pkt_num=0;    
+            if(r == 0){         //Check if data
+                if(total_bytes){//Reset if no data received
+                    std::cout << "Recevied " << total_bytes << "Bytes" << std::endl;
+                    total_bytes = 0;pkt_index = 0;pkt_num=0;
+                }
+                continue;    
             }
 
             if (buf[0] != pkt_index){
@@ -105,8 +120,6 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
                 MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
             }
-            // std::cout << "pkt " << pkt_index << std::endl;
-            // std::cout << "buf " << buf[0] << std::endl;
 
             gettimeofday(&SentTime, NULL);      // Get sent time
             double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
@@ -185,14 +198,23 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
 
 void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int pktrate, int pktnum, int bufsize){
-    host = getHost(host);
     // struct hostent* addr = gethostbyname(host.c_str());
     // std::cout << addr->h_name << std::endl;
     struct sockaddr_in UDP_Addr;
     memset (&UDP_Addr, 0, sizeof(UDP_Addr)); 
     UDP_Addr.sin_family = AF_INET;
     UDP_Addr.sin_port = htons(port); 
-    UDP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
+    if( host == "IN_ADDR_ANY") {
+        UDP_Addr.sin_addr.s_addr = INADDR_ANY;
+        UDP_Addr.sin_addr.s_addr = inet_addr("0.0.0.0");
+    }
+    else if(host == "localhost") 
+        host = "0.0.0.0";
+    else{
+        host = getHost(host);
+        UDP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
+    }
+     
 
     int UDP_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // Create a UDP socket
     if (UDP_Socket < 0) {
@@ -200,7 +222,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
 
-    int buf[pktsize]; // Buffer to store data
+    int buf[pktsize/4]; // Buffer to store data
     if(mode == RECV){ //As RECV mode be consider as Server
         if (bind(UDP_Socket, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0) {
             std::cerr << "Failed to bind UDP socket" <<  std::endl;
@@ -242,8 +264,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
             gettimeofday(&SentTime, NULL);      // Get sent time
             double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
                 if( stat_time*1000000 < elapsed){       //Check is it time to print stat
-                    // std::cout << pkt_index << " " << pkt_num  << std::endl;
-                    double rate = pkt_num*sizeof(buf)/(double)stat_time;
+                    double rate = (pkt_num*1000*sizeof(buf))/elapsed;
                     pkt_num = 0;    //Reset pkt num
                     double loss_rate = pkt_loss*100/pkt_index;
                     stat_cout(RECV,stat_time,pkt_index,pkt_loss,loss_rate,rate,MeanJitter,stat_index);
@@ -255,7 +276,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
 
     else if(mode == SEND){ //As SEND mode be consider as Client
-         
+        std::cout << "UDP socket created and connected to " << host << ":" << port <<  std::endl;
         float SendDelay = 0.0;
         if(pktrate != 0) {
             SendDelay = 1000000*(float)pktsize/pktrate;} //Set Delay for packet rate
@@ -296,9 +317,9 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
                 stat_time =(double)stat/1000;
                 if( stat_time*1000000 < elapsed){
-                    pkt_num = i - pkt_num + 1;
-                    double rate = pkt_num*1000000/(double)stat_time;
-                    stat_cout(SEND,stat_time,0,0,0,rate,0,stat_index);
+                    pkt_num = i - pkt_num;
+                    double rate = (pkt_num*pktsize)/elapsed;
+                    stat_cout(SEND,stat_time,0,0,0,rate*1000,0,stat_index);
                     stat_index++;
                     gettimeofday(&StartTime, NULL);
                 }

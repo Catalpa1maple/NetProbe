@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
     int stat = 500; // Default 500 ms
     string rhost = "localhost"; // Default localhost
     string lhost = "IN_ADDR_ANY"; // Default Late Binding
-    int rport, lport= 4180; // Default 4180
+    int rport = 4180, lport = 4180; // Default 4180
     string proto = "UDP"; // Default UDP
     int pktsize = 1000; // Default 1000 bytes
     int pktrate = 1000; // Default 1000 bytes/second
