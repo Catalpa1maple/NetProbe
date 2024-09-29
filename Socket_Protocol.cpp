@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include <netdb.h> 
 #include <sys/time.h>
-#include <format>
+#include <cstring>
 #include <iomanip>
 #include "Socket_Protocol.h"
 
@@ -46,7 +46,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
     TCP_Addr.sin_family = AF_INET;
     TCP_Addr.sin_port = htons(port);
     if( host == "IN_ADDR_ANY") {
-        TCP_Addr.sin_addr.s_addr = INADDR_ANY;
+        TCP_Addr.sin_addr.s_addr = inet_addr(INADDR_ANY);
     }else{
         host = getHost(host);
         TCP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
@@ -203,13 +203,12 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
     struct sockaddr_in UDP_Addr;
     memset (&UDP_Addr, 0, sizeof(UDP_Addr)); 
     UDP_Addr.sin_family = AF_INET;
-    UDP_Addr.sin_port = htons(port); 
-    if( host == "IN_ADDR_ANY") {
+    UDP_Addr.sin_port = htons(port);
+    // bool isbind;
+    if( host == "IN_ADDR_ANY" ) {
+        // isbind = false; 
         UDP_Addr.sin_addr.s_addr = INADDR_ANY;
-        UDP_Addr.sin_addr.s_addr = inet_addr("0.0.0.0");
     }
-    else if(host == "localhost") 
-        host = "0.0.0.0";
     else{
         host = getHost(host);
         UDP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
@@ -222,6 +221,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         return;
     }
 
+    
     int buf[pktsize/4]; // Buffer to store data
     if(mode == RECV){ //As RECV mode be consider as Server
         if (bind(UDP_Socket, (struct sockaddr*)&UDP_Addr, sizeof(UDP_Addr)) < 0) {
@@ -232,7 +232,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         std::cout << "UDP socket created and bound to " << host << ":" << port <<  std::endl;
     
         if (!bufsize)setsockopt(UDP_Socket, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)); // Set OS buffer size
-        socklen_t len = sizeof(UDP_Addr);
+        
         int pkt_index = 0, pkt_loss = 0;        //For checking loss
         int pkt_num = 0, stat_index = 1;
         int NumItv = 0; double MeanJitter = 0, MeanRecvItv = 0; // For jitter calculation
@@ -240,9 +240,14 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         struct timeval RecvTime, LastRecvTime;
         gettimeofday(&StartTime, NULL);         // Get intial start time
         double stat_time =(double)stat/1000;
+
+        struct sockaddr_in UDP_Addr_recv;
+        memset (&UDP_Addr, 0, sizeof(UDP_Addr_recv));
+        socklen_t len = sizeof(UDP_Addr_recv); 
+        
         while (true)
         {
-            if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr, &len) < 0){
+            if(recvfrom(UDP_Socket, &buf, pktsize, 0, (struct sockaddr*)&UDP_Addr_recv, &len) < 0){
                 std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
                 close(UDP_Socket);
                 return;
