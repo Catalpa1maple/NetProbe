@@ -112,6 +112,8 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
             if (buf[0] != pkt_index){
                 pkt_loss++; //Check loss
+                
+            }else{
                 gettimeofday(&RecvTime, NULL);
                 double RecvItv = (double)(RecvTime.tv_sec - LastRecvTime.tv_sec)*1000 +
                 (double)(RecvTime.tv_usec - LastRecvTime.tv_usec)/1000; 
@@ -119,6 +121,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 ++NumItv;   
                 if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
                 MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
+                MeanJitter = MeanJitter/(1000000*100);
             }
 
             gettimeofday(&SentTime, NULL);      // Get sent time
@@ -257,6 +260,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
             if (buf[0] != pkt_index){
                 pkt_loss++; //Check loss
+            }else{
                 gettimeofday(&RecvTime, NULL);
                 double RecvItv = (double)(RecvTime.tv_sec - LastRecvTime.tv_sec)*1000 +
                 (double)(RecvTime.tv_usec - LastRecvTime.tv_usec)/1000; 
@@ -264,6 +268,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 ++NumItv;   
                 if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
                 MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
+                MeanJitter = MeanJitter/(1000000*100);
             }
 
             double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
