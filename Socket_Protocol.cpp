@@ -46,7 +46,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
     TCP_Addr.sin_family = AF_INET;
     TCP_Addr.sin_port = htons(port);
     if( host == "IN_ADDR_ANY") {
-        TCP_Addr.sin_addr.s_addr = inet_addr(INADDR_ANY);
+        TCP_Addr.sin_addr.s_addr = INADDR_ANY;
     }else{
         host = getHost(host);
         TCP_Addr.sin_addr.s_addr = inet_addr(host.c_str());
@@ -90,7 +90,7 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         struct timeval StartTime, SentTime;
         struct timeval RecvTime, LastRecvTime;
         gettimeofday(&StartTime, NULL);         // Get intial start time
-        double stat_time =(double)stat/1000;
+        double stat_time =(double)stat*1000;
         
         while (true){   
             int r = recv(recv_Socket, &buf, pktsize,0);
@@ -123,12 +123,12 @@ void TCP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
 
             gettimeofday(&SentTime, NULL);      // Get sent time
             double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
-                if( stat_time*1000000 < elapsed){       //Check is it time to print stat
+                if( stat_time < elapsed){       //Check is it time to print stat
                     // std::cout << pkt_index << " " << pkt_num  << std::endl;
                     double rate = pkt_num*sizeof(buf)/(double)stat_time;
                     pkt_num = 0;    //Reset pkt num
                     double loss_rate = pkt_loss*100/pkt_index;
-                    stat_cout(RECV,stat_time,pkt_index,pkt_loss,loss_rate,rate,MeanJitter,stat_index);
+                    stat_cout(RECV,(double)stat/1000,pkt_index,pkt_loss,loss_rate,rate,MeanJitter,stat_index);
                     stat_index++;
                     gettimeofday(&StartTime, NULL);
                 }}
@@ -239,7 +239,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         struct timeval StartTime, SentTime;
         struct timeval RecvTime, LastRecvTime;
         gettimeofday(&StartTime, NULL);         // Get intial start time
-        double stat_time =(double)stat/1000;
+        double stat_time =(double)stat*1000;    //as stat is in ms
 
         struct sockaddr_in UDP_Addr_recv;
         memset (&UDP_Addr, 0, sizeof(UDP_Addr_recv));
@@ -252,6 +252,8 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 close(UDP_Socket);
                 return;
             }pkt_index++; pkt_num++;//Pkt num suggests nth pkt sent
+            gettimeofday(&SentTime, NULL);      // Get sent time
+
 
             if (buf[0] != pkt_index){
                 pkt_loss++; //Check loss
@@ -263,16 +265,14 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
                 if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
                 MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
             }
-            // std::cout << "pkt " << pkt_index << std::endl;
-            // std::cout << "buf " << buf[0] << std::endl;
 
-            gettimeofday(&SentTime, NULL);      // Get sent time
             double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
-                if( stat_time*1000000 < elapsed){       //Check is it time to print stat
-                    double rate = (pkt_num*1000*sizeof(buf))/elapsed;
+                if( stat_time < elapsed){       //Check is it time to print stat
+                    double rate = (pkt_num*sizeof(buf))/elapsed;
+                    // std::cout << pkt_num << std::endl;
                     pkt_num = 0;    //Reset pkt num
                     double loss_rate = pkt_loss*100/pkt_index;
-                    stat_cout(RECV,stat_time,pkt_index,pkt_loss,loss_rate,rate,MeanJitter,stat_index);
+                    stat_cout(RECV,(double)stat/1000,pkt_index,pkt_loss,loss_rate,rate*1000,MeanJitter,stat_index);
                     stat_index++;
                     gettimeofday(&StartTime, NULL);
                 }
