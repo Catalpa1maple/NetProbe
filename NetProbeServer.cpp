@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
+#include "tinythread.h"
+using namespace tthread;
 
 int main(int argc, char *argv[]){
     int subfsize;
