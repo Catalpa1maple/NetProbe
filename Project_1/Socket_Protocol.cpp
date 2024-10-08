@@ -10,6 +10,7 @@
 #include <iomanip>
 #include "Socket_Protocol.h"
 
+
 void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, double rate, int jitter, int index){
     //stat unit is second
     double elap = (double)stat*index;
