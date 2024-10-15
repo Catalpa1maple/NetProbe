@@ -247,7 +247,7 @@ void UDP_socket(int mode,int stat, std::string& host, int port, int pktsize, int
         double stat_time =(double)stat*1000;    //as stat is in ms
 
         struct sockaddr_in UDP_Addr_recv;
-        memset (&UDP_Addr, 0, sizeof(UDP_Addr_recv));
+        memset (&UDP_Addr_recv, 0, sizeof(UDP_Addr_recv));
         socklen_t len = sizeof(UDP_Addr_recv); 
         
         while (true)

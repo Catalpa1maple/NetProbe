@@ -1,9 +1,11 @@
 # Ignore executable files
 *.exe
-*.out
+*.txt
 *.app
 *.o
 *.json
 NetProbe
+NetProbeServer
+NetProbeClient
 README.md
 *.pdf
