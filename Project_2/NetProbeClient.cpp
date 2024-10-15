@@ -24,7 +24,7 @@
 #define WSAGetLastError() (errno)
 #define closesocket(s) close(s)
 #define ioctlsocket ioctl
-#define Sleep(x) usleep(x*1000) /Sleep() is in ms
+#define Sleep(x) usleep(x*1000) //Sleep() is in ms
 
 #endif
 #include <iostream>
@@ -93,10 +93,59 @@ void init_client(class Net_opt net_opt){
     }
     
     // char buf[1000000]; // 1MB buffer
-    // if(net_opt.proto == "TCP"){
+    if(net_opt.proto == "TCP"){
+        int port;
+        Sleep(1000); //Wait for server to send back port
+        
+        /*
+            For receiving port from server
+        */
+        int retries = 3;
+        while (retries > 0) {
+            int by_re = recv(TCP_client_socket, (char*)&port, sizeof(port), 0);
+            if (by_re > 0) break;
+            Sleep(100);
+            retries--;
+        }
+        if (retries == 0) {
+            cout << "Failed to receive port after multiple attempts" << endl;
+        }
+
+        serv_addr.sin_port = htons(port);      //Change to the port that server send back
+        cout << "Port: " << port << endl;
+        closesocket(TCP_client_socket);
+        SOCKET data_client_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (data_client_socket == INVALID_SOCKET) {
+            std::cerr << "Failed to create client socket. Error: " << WSAGetLastError() << std::endl;
+            return;
+        }
+        if (connect(data_client_socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == SOCKET_ERROR) {
+            std::cerr << "Failed to connect to server. Error: " << WSAGetLastError() << std::endl;
+            closesocket(data_client_socket);
+            return;
+        }
+
+        /*
+            Client Send Mode 
+        */
+        if(net_opt.mode == Net_opt::SEND){
+            for(int i=0;i<net_opt.pktnum;i++){
+                int buf[net_opt.pktsize/4];
+                memset(buf, i, sizeof(buf));
+                if (send(data_client_socket, buf, sizeof(buf), 0) == SOCKET_ERROR) {
+                    std::cerr << "Failed to send data" << std::endl;
+                    closesocket(data_client_socket);
+                    return;
+                }
+            }
+        }
+
+       /*
+            Client Recv Mode
+        */
 
 
-
+    }
     // else if(net_opt.proto == "UDP"){
     //     SOCKET UDP_client_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     //     if (UDP_client_socket == INVALID_SOCKET) {

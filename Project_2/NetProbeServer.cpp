@@ -13,32 +13,135 @@
 using namespace std;
 
 
-void handle_msg(int msg[]){
+void handle_msg(ClientInfo *client_info){
     cout << "mode: ";
-    if (msg[0] == 0) cout << "send" << endl;
-    else if (msg[0] == 1) cout << "recv" << endl;
-    cout << "stat: " << msg[1] << endl;
+    if (client_info->msg[0] == 0) cout << "send" << endl;
+    else if (client_info->msg[0] == 1) cout << "recv" << endl;
+    cout << "stat: " << client_info->msg[1] << endl;
     cout << "proto: ";
-    if (msg[2] == 0) cout << "TCP" << endl;
-    else if (msg[2] == 1) cout << "UDP" << endl;
-    cout << "pktsize: " << msg[3] << endl;
-    cout << "pktrate: " << msg[4] << endl;
-    cout << "pktnum: " << msg[5] << endl;
+    if (client_info->msg[2] == 0) cout << "TCP" << endl;
+    else if (client_info->msg[2] == 1) cout << "UDP" << endl;
+    cout << "pktsize: " << client_info->msg[3] << endl;
+    cout << "pktrate: " << client_info->msg[4] << endl;
+    cout << "pktnum: " << client_info->msg[5] << endl;
 }
 
 void TCP_thread(ClientInfo* client_info){
-    if(client_info->msg[0] == 0){    //Send Mode
-        for(int i=0;i<client_info->msg[5];i++){
-            int buf[client_info->msg[3]/4];
-            memset(buf, i, sizeof(buf));
-            send(client_info->socket, buf, sizeof(buf), 0);
+    /*
+        Set up TCP server and
+        Pack the info of socket to send to client
+        Send back a info of port to client
+    */
+    struct sockaddr_in TCP_Trd;
+    memset(&TCP_Trd, 0, sizeof(TCP_Trd));
+    TCP_Trd.sin_family = AF_INET;
+    TCP_Trd.sin_addr.s_addr = client_info->addr.sin_addr.s_addr; //Client IP
+
+    int TCP_Trd_Socket = socket(AF_INET, SOCK_STREAM, 0);
+    ::bind(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, sizeof(TCP_Trd));
+    listen(TCP_Trd_Socket, 5);
+    socklen_t len = sizeof(TCP_Trd);
+    getsockname(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, &len); //Get the port
+    cout << "TCP socket 2 :" << client_info->socket << " " << TCP_Trd_Socket<< endl;
+    int port = ntohs(TCP_Trd.sin_port);
+    cout << "Port: " << port << endl;
+    if (send((client_info->socket), &port, sizeof(port), 0) < 0) {
+        std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
+        close(TCP_Trd_Socket);
+        close(client_info->socket);
+        delete client_info;
+        return;
+    }
+    int new_socket = accept(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, (socklen_t*)&TCP_Trd);
+    cout << "Connected to " << client_info->addr.sin_addr.s_addr << " port " << port;
+    
+    //Close the original socket
+    close(client_info->socket); 
+
+    /*
+        Client Send Mode  -- Server Receiving 
+    */
+   int buf[client_info->msg[3]/4];
+    if(client_info->msg[0] == 0){    
+        cout << " SEND, TCP, " << client_info->msg[4] << " Bps" << endl;
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            recv(new_socket, buf, sizeof(buf), 0);
         }
     }
-    else if(client_info->msg[0] == 1){   //Recv Mode
 
+    /*
+        Client Recv Mode  -- Server Sending 
+    */
+    else if(client_info->msg[0] == 1){
+        cout << " RECV, TCP, " << client_info->msg[4] << " Bps" << endl;   
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            memset(buf, 0, sizeof(buf));
+            buf[0] = i;                             //Set pkt syn_num
+            send(new_socket, buf, sizeof(buf), 0);
+        }
     }
-
+    
+    /*
+        Free up the connection
+    */
+    cout << "Mission Completed, ternimating connection" << endl;
+    close(new_socket);
+    delete client_info;
 }
+
+
+
+
+void UDP_thread(ClientInfo* client_info){
+    /*
+        Set up UDP server and
+        Pack the info of socket to send to client
+        Send back a info of port to client
+    */
+    struct sockaddr_in UDP_Trd;
+    memset(&UDP_Trd, 0, sizeof(UDP_Trd));
+    UDP_Trd.sin_family = AF_INET;
+    UDP_Trd.sin_addr.s_addr = client_info->addr.sin_addr.s_addr; //Client IP
+
+    int UDP_Trd_Socket = socket(AF_INET, SOCK_DGRAM, 0);
+    ::bind(UDP_Trd_Socket, (struct sockaddr*)&UDP_Trd, sizeof(UDP_Trd));
+    socklen_t len = sizeof(UDP_Trd);
+    getsockname(UDP_Trd_Socket, (struct sockaddr*)&UDP_Trd, &len); //Get the port
+    int port = ntohs(UDP_Trd.sin_port);
+    cout << "Port: " << port << endl;
+    if (send((client_info->socket), &port, sizeof(port), 0) < 0) {
+        std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
+        close(UDP_Trd_Socket);
+        close(client_info->socket);
+        delete client_info;
+        return;
+    }
+    cout << "Connected to " << client_info->addr.sin_addr.s_addr << " port " << port;
+    
+    //Close the original socket
+    close(client_info->socket); 
+
+    /*
+        Client Send Mode  -- Server Receiving 
+    */
+    int buf[client_info->msg[3]/4];
+    if(client_info->msg[0] == 0){    
+        cout << " SEND, UDP, " << client_info->msg[4] << " Bps" << endl;
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            recvfrom(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, &len);
+        }
+    }
+    else(client_info->msg[0] == 1){
+        cout << " RECV, UDP, " << client_info->msg[4] << " Bps" << endl;   
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            memset(buf, 0, sizeof(buf));
+            buf[0] = i;                             //Set pkt syn_num
+            sendto(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, sizeof(UDP_Trd));
+        }
+    }
+}
+
+
 
 void init_server(class Net_opt net_opt){
 
@@ -92,6 +195,9 @@ void init_server(class Net_opt net_opt){
 
     while (true) //Main thread to handle TCP connection
     {
+        /*
+            Client socket setup and connection
+        */
         struct sockaddr_in TCP_Clnt_Addr;
         memset(&TCP_Clnt_Addr, 0, sizeof(TCP_Clnt_Addr));
         socklen_t TCP_Clnt_Addr_len = sizeof(TCP_Clnt_Addr);
@@ -101,6 +207,11 @@ void init_server(class Net_opt net_opt){
             continue;
         }
 
+
+        /*
+            Receive msg from client 
+            Print out the msg
+        */
         ClientInfo* client_info = new ClientInfo;
         client_info->socket = TCP_Client_Socket;
         client_info->addr = TCP_Clnt_Addr;  
@@ -109,9 +220,14 @@ void init_server(class Net_opt net_opt){
             close(TCP_Client_Socket);
             delete client_info;
             return;
-        }
+        }handle_msg(client_info);    //Print out the msg
+        cout << "TCP socket : " << client_info->socket << endl;
 
-        handle_msg(client_info->msg);
+        /*
+            Create a thread TCP or UDP to handle the connection separately
+            where msg[2] is the protocol 
+            0 for TCP and 1 for UDP
+        */
         if(client_info->msg[2] == 0){        // Create TCP thread
             try {
                 thread tcpThread(TCP_thread, client_info);
@@ -122,8 +238,22 @@ void init_server(class Net_opt net_opt){
                 delete client_info;
         }}
         else if((client_info->msg[2]) == 1){   // Create UDP thread
-            puts("UPD");
-        }
+            try {
+                thread udpThread(UDP_thread, client_info);
+                tcpThread.detach();
+            } catch (const system_error& e) {
+                cerr << "Error creating thread: " << e.what() << endl;
+                close(client_info->socket);
+                delete client_info;
+        }}
+
+        /*
+            Assigned thread to handle the connection
+            Clear up socket and client_info
+        */
+        close(TCP_Client_Socket);
+        delete client_info;
+
     }
 
 }
