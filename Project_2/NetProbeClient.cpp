@@ -71,26 +71,30 @@ void init_client(class Net_opt net_opt){
     if( net_opt.rhost == "localhost") { net_opt.rhost = "127.0.0.1"; }
     serv_addr.sin_addr.s_addr = inet_addr(net_opt.rhost.c_str());
     
-    char buf[1000000]; // 1MB buffer
-    if(net_opt.proto == "TCP"){
-        SOCKET TCP_client_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (TCP_client_socket == INVALID_SOCKET) {
-            std::cerr << "Failed to create client socket. Error: " << WSAGetLastError() << std::endl;
-            return;
-        }
-        if (connect(TCP_client_socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == SOCKET_ERROR) {
-            std::cerr << "Failed to connect to server. Error: " << WSAGetLastError() << std::endl;
-            closesocket(TCP_client_socket);
-            return;
-        }
 
-        if( send(TCP_client_socket, msg_int, sizeof(msg_int), 0) == INVALID_SOCKET){
-            std::cerr << "Failed to send data. Error: " << WSAGetLastError() << std::endl;
-            closesocket(TCP_client_socket);
-            return;
-        }
-        cout << msg_int[3] << " " << msg_int[4] << " " << msg_int[5] << endl;
+    SOCKET TCP_client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (TCP_client_socket == INVALID_SOCKET) {
+        std::cerr << "Failed to create client socket. Error: " << WSAGetLastError() << std::endl;
+        return;
     }
+    if (connect(TCP_client_socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == SOCKET_ERROR) {
+        std::cerr << "Failed to connect to server. Error: " << WSAGetLastError() << std::endl;
+        closesocket(TCP_client_socket);
+        return;
+    }
+
+    /*
+        For sending msg of config -- Using TCP first
+    */
+    if( send(TCP_client_socket, msg_int, sizeof(int)*8, 0) == INVALID_SOCKET){
+        std::cerr << "Failed to send data. Error: " << WSAGetLastError() << std::endl;
+        closesocket(TCP_client_socket);
+        return;
+    }
+    
+    // char buf[1000000]; // 1MB buffer
+    // if(net_opt.proto == "TCP"){
+
 
 
     // else if(net_opt.proto == "UDP"){
@@ -185,7 +189,6 @@ int main(int argc, char *argv[]){
                     net_opt.rbufsize = atoi(optarg);
                     break;
                 default:
-                    std::cout << "Error : Invalid option" << std::endl;
                     return EXIT_FAILURE;
             }
         }
@@ -193,6 +196,24 @@ int main(int argc, char *argv[]){
             std::cerr << "Error : Mode not specified" << std::endl;
             return EXIT_FAILURE;
         }
+        //print net_opt info
+            std::cout << "Mode: ";
+            if (net_opt.mode == Net_opt::SEND) std::cout << "SEND" << std::endl;
+            else if (net_opt.mode == Net_opt::RECV) std::cout << "RECV" << std::endl;
+            std::cout << "Stat:                " << net_opt.stat << " ms" << std::endl;
+            std::cout << "Remote Host:         " << net_opt.rhost << std::endl;
+            std::cout << "Remote Port:         " << net_opt.rport << std::endl;
+            std::cout << "Protocol:            " << net_opt.proto << std::endl;
+            std::cout << "Packet Size:         " << net_opt.pktsize << " bytes" << std::endl;
+            std::cout << "Packet Rate:         " << net_opt.pktrate << " bytes/second" << std::endl;
+            std::cout << "Packet Number:       ";
+            if (net_opt.pktnum == 0) std::cout << "Infinite" << std::endl;
+            else std::cout << net_opt.pktnum << std::endl;
+            std::cout << "Send Buffer Size:    " << net_opt.sbufsize << " bytes" << std::endl;
+            std::cout << "Local Host:          " << net_opt.lhost << std::endl;
+            std::cout << "Local Port:          " << net_opt.lport << std::endl;
+            std::cout << "Receive Buffer Size: " << net_opt.rbufsize << " bytes" << std::endl;
+
         init_client(net_opt);
 }
 

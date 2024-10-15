@@ -26,15 +26,15 @@ void handle_msg(int msg[]){
     cout << "pktnum: " << msg[5] << endl;
 }
 
-void TCP_thread(ClientInfo client_info){
-    if(client_info.msg[0] == 0){    //Send Mode
-        for(int i=0;i<client_info.msg[5];i++){
-            int[client_info.msg[3]/4];
+void TCP_thread(ClientInfo* client_info){
+    if(client_info->msg[0] == 0){    //Send Mode
+        for(int i=0;i<client_info->msg[5];i++){
+            int buf[client_info->msg[3]/4];
             memset(buf, i, sizeof(buf));
-            send(client_info.socket, buf, sizeof(buf), 0)
+            send(client_info->socket, buf, sizeof(buf), 0);
         }
     }
-    else if(client_info.msg[0] == 1){   //Recv Mode
+    else if(client_info->msg[0] == 1){   //Recv Mode
 
     }
 
@@ -101,22 +101,27 @@ void init_server(class Net_opt net_opt){
             continue;
         }
 
-        ClientInfo* client_info = new ClientInfo;{TCP_Client_Socket, TCP_Clnt_Addr;};   
-        if (recv(TCP_Client_Socket, &client_info.msg, sizeof(client_info.msg), 0) < 0) {
+        ClientInfo* client_info = new ClientInfo;
+        client_info->socket = TCP_Client_Socket;
+        client_info->addr = TCP_Clnt_Addr;  
+        if (recv(TCP_Client_Socket, &client_info->msg, sizeof(client_info->msg), 0) < 0) {
             std::cerr << "Failed to receive data" << std::endl;
             close(TCP_Client_Socket);
             delete client_info;
             return;
         }
 
-        handle_msg(client_info.msg);
-        if(client_info.msg[2] == 0){        // Create TCP thread
-        if (thread create_TCP_thread(TCP_thread, client_info) != thrd_success){
-            std::cerr << "Error creating thread" << std::endl;
-            close(TCP_Client_Socket);
-            delete client_info;
+        handle_msg(client_info->msg);
+        if(client_info->msg[2] == 0){        // Create TCP thread
+            try {
+                thread tcpThread(TCP_thread, client_info);
+                tcpThread.detach();
+            } catch (const system_error& e) {
+                cerr << "Error creating thread: " << e.what() << endl;
+                close(client_info->socket);
+                delete client_info;
         }}
-        else if((client_info.msg[2]) == 1){   // Create UDP thread
+        else if((client_info->msg[2]) == 1){   // Create UDP thread
             puts("UPD");
         }
     }
