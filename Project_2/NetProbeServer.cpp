@@ -131,7 +131,7 @@ void UDP_thread(ClientInfo* client_info){
             recvfrom(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, &len);
         }
     }
-    else(client_info->msg[0] == 1){
+    else if(client_info->msg[0] == 1){
         cout << " RECV, UDP, " << client_info->msg[4] << " Bps" << endl;   
         for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
             memset(buf, 0, sizeof(buf));
@@ -240,7 +240,7 @@ void init_server(class Net_opt net_opt){
         else if((client_info->msg[2]) == 1){   // Create UDP thread
             try {
                 thread udpThread(UDP_thread, client_info);
-                tcpThread.detach();
+                udpThread.detach();
             } catch (const system_error& e) {
                 cerr << "Error creating thread: " << e.what() << endl;
                 close(client_info->socket);
