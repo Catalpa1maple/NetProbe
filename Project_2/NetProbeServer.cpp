@@ -28,7 +28,6 @@ void handle_msg(ClientInfo *client_info){
 }
 
 void TCP_thread(ClientInfo* client_info){
-    cout << "socket: "<< client_info->socket << endl;
     /*
         Set up TCP server and
         Pack the info of socket to send to client
@@ -46,7 +45,6 @@ void TCP_thread(ClientInfo* client_info){
     socklen_t len = sizeof(TCP_Trd);
     getsockname(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, &len); //Get the port
     int port = ntohs(TCP_Trd.sin_port);
-    cout << "Port: " << port << endl;
 
     if (send((client_info->socket), &port, sizeof(port), 0) < 0) {
         std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
@@ -85,14 +83,18 @@ void TCP_thread(ClientInfo* client_info){
         for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
             memset(buf, 0, sizeof(buf));
             buf[0] = i;                             //Set pkt syn_num
-            send(new_socket, buf, sizeof(buf), 0);
-        }
-    }
+            if (send(new_socket, buf, sizeof(buf), 0) < 0) {
+                std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
+                close(new_socket);
+                delete client_info;
+                return;
+            }
+    }}
     
     /*
         Free up the connection
     */
-    cout << "Mission Completed, ternimating connection" << endl;
+    // cout << "Mission Completed, ternimating connection" << endl;
     close(new_socket);
     delete client_info;
 }
