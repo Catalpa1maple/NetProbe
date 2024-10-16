@@ -14,6 +14,8 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <string>
+#include <cstring>
+#include <iomanip>
 #include <errno.h>
 #define SOCKET int
 #define INVALID_SOCKET -1
@@ -47,6 +49,36 @@ int* generate_msg(class Net_opt net_opt){
     msg[4] = net_opt.pktrate;
     msg[5] = net_opt.pktnum;
         return msg;
+}
+
+void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, double rate, int jitter, int index){
+    //stat unit is second
+    double elap = (double)stat*index;
+    std::string rate_unit = "KBps";
+    
+
+    if(rate > (double)1024){
+        rate = (rate/1024);
+        rate_unit = "MBps";
+    }
+
+
+    if(mode == Net_opt::RECV){
+        std::cout << "Elapsed " << std::fixed 
+            << setprecision(1) << elap << 
+            "s Pkts " << pkts << " Lost "<< lossnum
+            << ", " << lossrate << "% Rate " << rate
+            << rate_unit << " Jitter " <<  jitter << "ms"
+        << std::endl;
+    }
+
+    else if(mode == Net_opt::SEND){
+        std::cout << "Elapsed " << std::fixed
+            << setprecision(1)
+            << elap << "s Rate " 
+            << rate << rate_unit 
+        << std::endl;
+    }
 }
 
 void init_client(class Net_opt net_opt){
@@ -95,8 +127,6 @@ void init_client(class Net_opt net_opt){
     // char buf[1000000]; // 1MB buffer
     if(net_opt.proto == "TCP"){
         int port;
-        Sleep(1000); //Wait for server to send back port
-        
         /*
             For receiving port from server
         */
@@ -112,7 +142,6 @@ void init_client(class Net_opt net_opt){
         }
 
         serv_addr.sin_port = htons(port);      //Change to the port that server send back
-        cout << "Port: " << port << endl;
         closesocket(TCP_client_socket);
         SOCKET data_client_socket = socket(AF_INET, SOCK_STREAM, 0);
         if (data_client_socket == INVALID_SOCKET) {
@@ -124,27 +153,65 @@ void init_client(class Net_opt net_opt){
             closesocket(data_client_socket);
             return;
         }
+        cout << "connected to server, port: " << port << endl;
 
-        /*
-            Client Send Mode 
-        */
-        if(net_opt.mode == Net_opt::SEND){
+
+    int buf[net_opt.pktsize/4]; // Buffer to store data
+    /*
+        Client Send Mode 
+    */
+    if(net_opt.mode == Net_opt::SEND){
+        float SendDelay = 0.0;
+        if(net_opt.pktrate != 0) {
+            SendDelay = 1000000*(float)net_opt.pktsize/net_opt.pktrate;} //Set Delay for packet rate
+        if (!net_opt.sbufsize) setsockopt(data_client_socket, SOL_SOCKET, SO_SNDBUF, &net_opt.sbufsize, sizeof(net_opt.sbufsize)); // Set OS buffer size
+        
+        int stat_index = 1,pkt_send = 0;
+        struct timeval StartTime, SentTime;
+        gettimeofday(&StartTime, NULL);         // Get intial start time   
+        double stat_time = net_opt.stat*1000;
             for(int i=0;i<net_opt.pktnum;i++){
-                int buf[net_opt.pktsize/4];
                 memset(buf, i, sizeof(buf));
+                if(net_opt.pktrate != 0)gettimeofday(&StartTime, NULL);     // Get start time if rate is set
                 if (send(data_client_socket, buf, sizeof(buf), 0) == SOCKET_ERROR) {
-                    std::cerr << "Failed to send data" << std::endl;
-                    closesocket(data_client_socket);
-                    return;
+                    std::cerr << "Failed to send data" << std::endl;closesocket(data_client_socket);
+                    return;}
+                if(net_opt.pktrate != 0){
+                    gettimeofday(&SentTime, NULL);      // Get sent time if rate is set
+                    double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                    stat_time = net_opt.stat*1000;  //Set stat time in us
+                    while (elapsed < SendDelay) {    
+                        elapsed += 10000; //10ms 
+                        usleep(10000);
+                        if(stat_time < elapsed){
+                            stat_cout(Net_opt::SEND,(double)net_opt.stat/1000,0,0,0,net_opt.pktrate,0,stat_index);
+                            stat_time += stat_time;
+                            stat_index++;}}
+                }
+                if (net_opt.pktrate == 0){      //Infinte pktrate
+                    gettimeofday(&SentTime, NULL);
+                    double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                    stat_time =(double)net_opt.stat/1000;
+                    if( stat_time*1000000 < elapsed){
+                        pkt_send = i - pkt_send;
+                        double rate = (pkt_send*net_opt.pktsize)/(elapsed/1000000);
+                        stat_cout(Net_opt::SEND,stat_time,0,0,0,rate,0,stat_index);
+                        pkt_send = i;     // pkt_send is the number of packets sent
+                        stat_index++;
+                        gettimeofday(&StartTime, NULL);}
                 }
             }
-        }
+        std::cout << "Data sent: " << sizeof(buf)*net_opt.pktnum << " bytes"<< std::endl;
+        close(data_client_socket);
+    }
 
-       /*
-            Client Recv Mode
-        */
-
-
+    /*
+        Client Recv Mode
+    */
+    if(net_opt.mode == Net_opt::RECV){
+        if (!net_opt.rbufsize) setsockopt(data_client_socket, SOL_SOCKET, SO_SNDBUF, &net_opt.rbufsize, sizeof(net_opt.rbufsize)); // Set OS buffer size
+        
+    }
     }
     // else if(net_opt.proto == "UDP"){
     //     SOCKET UDP_client_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -224,6 +291,7 @@ int main(int argc, char *argv[]){
                     break;
                 case 'g':
                     net_opt.pktnum = atoi(optarg);
+                    cout << net_opt.pktnum << endl;
                     break;
                 case 'h':
                     net_opt.sbufsize = atoi(optarg);
@@ -246,7 +314,7 @@ int main(int argc, char *argv[]){
             return EXIT_FAILURE;
         }
         //print net_opt info
-            std::cout << "Mode: ";
+            std::cout << "Mode:                ";
             if (net_opt.mode == Net_opt::SEND) std::cout << "SEND" << std::endl;
             else if (net_opt.mode == Net_opt::RECV) std::cout << "RECV" << std::endl;
             std::cout << "Stat:                " << net_opt.stat << " ms" << std::endl;
