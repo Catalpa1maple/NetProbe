@@ -1,13 +1,19 @@
-#include <iostream>
-#include <unistd.h>
-#include <string>
-#include <cstdlib>
-#include <cstring>
-#include <getopt.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <sys/fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
-#include <sstream>
+#include <netdb.h>
+#include <unistd.h>
+#include <string>
+#include <cstring>
+#include <iomanip>
+#include <errno.h>
+#include <iostream>
+#include <getopt.h>
+#include <string>
 #include <thread>
 #include "NetProbe.h"
 using namespace std;
@@ -38,7 +44,6 @@ void TCP_thread(ClientInfo* client_info){
     TCP_Trd.sin_family = AF_INET;
     TCP_Trd.sin_addr.s_addr = client_info->addr.sin_addr.s_addr; //Client IP
 
-
     int TCP_Trd_Socket = socket(AF_INET, SOCK_STREAM, 0);
     ::bind(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, sizeof(TCP_Trd));
     listen(TCP_Trd_Socket, 5);
@@ -61,6 +66,10 @@ void TCP_thread(ClientInfo* client_info){
     //Close the original socket
     close(client_info->socket); 
 
+    //Set up OS buf
+    if(!client_info->snr_buf[0]) setsockopt(new_socket, SOL_SOCKET, SO_SNDBUF, &client_info->snr_buf[0], sizeof(client_info->snr_buf[0])); 
+    if(!client_info->snr_buf[1]) setsockopt(new_socket, SOL_SOCKET, SO_RCVBUF, &client_info->snr_buf[1], sizeof(client_info->snr_buf[1]));
+
     /*
         Client Send Mode  -- Server Receiving 
     */
@@ -80,17 +89,29 @@ void TCP_thread(ClientInfo* client_info){
     */
     else if(client_info->msg[0] == 1){
         cout << " RECV, TCP, " << client_info->msg[4] << " Bps" << endl;   
-        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+
+        float SendDelay = 0.0;
+        if(client_info->msg[4] != 0) {  //Msg : [3: pktsize, 4: pktrate]
+            SendDelay = 1000000*(float)client_info->msg[3]/client_info->msg[4];} //Set Delay for packet rate
+        
+        struct timeval StartTime, SentTime;
+        gettimeofday(&StartTime, NULL);                 // Get intial start time   
+        double stat_time = client_info->msg[1]*1000;    //msg[1] is stat
+
+        for(int i=0;i<client_info->msg[5];i++){         //msg[5] is pktnum
             memset(buf, 0, sizeof(buf));
-            buf[0] = i;                             //Set pkt syn_num
+            buf[0] = i;                                 //Set pkt syn_num
             if (send(new_socket, buf, sizeof(buf), 0) < 0) {
-                std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
-                close(new_socket);
-                delete client_info;
-                return;
-            }
-    }}
-    
+                    cerr << "Failed to send data" << endl;close(new_socket);
+                    return;}
+            if(client_info->msg[4] != 0){
+                gettimeofday(&SentTime, NULL);      // Get sent time if rate is set
+                double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                usleep(stat_time-elapsed);
+                gettimeofday(&StartTime, NULL);
+                }
+        }
+    } 
     /*
         Free up the connection
     */
@@ -111,14 +132,13 @@ void UDP_thread(ClientInfo* client_info){
     struct sockaddr_in UDP_Trd;
     memset(&UDP_Trd, 0, sizeof(UDP_Trd));
     UDP_Trd.sin_family = AF_INET;
-    UDP_Trd.sin_addr.s_addr = client_info->addr.sin_addr.s_addr; //Client IP
+    UDP_Trd.sin_addr.s_addr = INADDR_ANY;
 
     int UDP_Trd_Socket = socket(AF_INET, SOCK_DGRAM, 0);
     ::bind(UDP_Trd_Socket, (struct sockaddr*)&UDP_Trd, sizeof(UDP_Trd));
     socklen_t len = sizeof(UDP_Trd);
     getsockname(UDP_Trd_Socket, (struct sockaddr*)&UDP_Trd, &len); //Get the port
     int port = ntohs(UDP_Trd.sin_port);
-    cout << "Port: " << port << endl;
     if (send((client_info->socket), &port, sizeof(port), 0) < 0) {
         std::cerr << "Failed to send data" << strerror(errno)<< std::endl;
         close(UDP_Trd_Socket);
@@ -126,10 +146,18 @@ void UDP_thread(ClientInfo* client_info){
         delete client_info;
         return;
     }
-    cout << "Connected to " << client_info->addr.sin_addr.s_addr << " port " << port;
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(UDP_Trd.sin_addr), ip_str, INET_ADDRSTRLEN);
+    cout << "Connected to " << ip_str << " port " << port;
     
+
     //Close the original socket
     close(client_info->socket); 
+
+    //Set up OS buf
+    if(!client_info->snr_buf[0]) setsockopt(UDP_Trd_Socket, SOL_SOCKET, SO_SNDBUF, &client_info->snr_buf[0], sizeof(client_info->snr_buf[0])); 
+    if(!client_info->snr_buf[1]) setsockopt(UDP_Trd_Socket, SOL_SOCKET, SO_RCVBUF, &client_info->snr_buf[1], sizeof(client_info->snr_buf[1]));
+
 
     /*
         Client Send Mode  -- Server Receiving 
@@ -141,15 +169,43 @@ void UDP_thread(ClientInfo* client_info){
             recvfrom(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, &len);
         }
     }
+    /*
+        Client Recv Mode  -- Server Sending 
+    */
     else if(client_info->msg[0] == 1){
-        cout << " RECV, UDP, " << client_info->msg[4] << " Bps" << endl;   
-        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+        cout << " RECV, UDP, " << client_info->msg[4] << " Bps" << endl;
+        struct sockaddr_in client_addr = client_info->addr; //Client IP;
+        client_addr.sin_port = htons(client_info->port); //Client Port
+        float SendDelay = 0.0;
+        if(client_info->msg[4] != 0) {  //Msg : [3: pktsize, 4: pktrate]
+            SendDelay = 1000000*(float)client_info->msg[3]/client_info->msg[4];} //Set Delay for packet rate
+        
+        struct timeval StartTime, SentTime;
+        gettimeofday(&StartTime, NULL);                 // Get intial start time   
+        double stat_time = client_info->msg[1]*1000;    //msg[1] is stat
+
+        for(int i=0;i<client_info->msg[5];i++){         //msg[5] is pktnum
             memset(buf, 0, sizeof(buf));
-            buf[0] = i;                             //Set pkt syn_num
-            sendto(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, sizeof(UDP_Trd));
+            buf[0] = i;                                 //Set pkt syn_num
+            if (sendto(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&client_addr, sizeof(client_addr)) < 0) {
+                    cerr << "Failed to send data" << endl;close(UDP_Trd_Socket);
+                    return;}
+            if(client_info->msg[4] != 0){
+                gettimeofday(&SentTime, NULL);      // Get sent time if rate is set
+                double elapsed = (double)(SentTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(SentTime.tv_usec - StartTime.tv_usec);
+                usleep(stat_time-elapsed);
+                gettimeofday(&StartTime, NULL);
+                }
         }
+        /*
+        Free up the connection
+        */
+        // cout << "Mission Completed, ternimating connection" << endl;
+        close(UDP_Trd_Socket);
+        delete client_info;
     }
-}
+} 
+
 
 
 
@@ -197,11 +253,6 @@ void init_server(class Net_opt net_opt){
 
     cout << "Server is listening on port " << net_opt.lport << endl;
 
-    // thrd_t t;
-    // if (thrd_create(&t, UDP_thread, (void*)0) != thrd_suceess){
-    //     cerr << "Error creating thread" << endl;
-    //     return EXIT_FAILURE;
-    // }// create a thread to handle UDP connection
 
     while (true) //Main thread to handle TCP connection
     {
@@ -224,7 +275,11 @@ void init_server(class Net_opt net_opt){
         */
         ClientInfo* client_info = new ClientInfo;
         client_info->socket = TCP_Client_Socket;
-        client_info->addr = TCP_Clnt_Addr;  
+        client_info->addr = TCP_Clnt_Addr;
+        client_info->host = net_opt.lhost;
+        client_info->port = net_opt.lport;
+        if(!net_opt.sbufsize)client_info->snr_buf[0] = net_opt.sbufsize;
+        if(!net_opt.rbufsize)client_info->snr_buf[1] = net_opt.rbufsize;
         if (recv(TCP_Client_Socket, &client_info->msg, sizeof(client_info->msg), 0) < 0) {
             std::cerr << "Failed to receive data" << std::endl;
             close(TCP_Client_Socket);
@@ -245,7 +300,8 @@ void init_server(class Net_opt net_opt){
                 cerr << "Error creating thread: " << e.what() << endl;
                 close(client_info->socket);
                 delete client_info;
-        }}
+            }
+        }
         else if((client_info->msg[2]) == 1){   // Create UDP thread
             try {
                 thread udpThread(UDP_thread, client_info);
@@ -254,7 +310,8 @@ void init_server(class Net_opt net_opt){
                 cerr << "Error creating thread: " << e.what() << endl;
                 close(client_info->socket);
                 delete client_info;
-        }}
+            }
+        }
 
 
     }
@@ -262,58 +319,7 @@ void init_server(class Net_opt net_opt){
 }
 
 
-// int init_connection(void* arg){
-//     ClientInfo* client_info = (ClientInfo*)arg;
-//     int client_socket = client_info->socket;
-//     struct sockaddr_in client_addr = client_info->addr;
-    
-//     char msg[1000];
-//     if (recv(client_socket, &msg, 10, 0) < 0) {
-//         std::cerr << "Failed to receive data" << std::endl;
-//         closesocket(client_socket);
-//         delete client_info;
-//         return 0;
-//     }
 
-//     istringstream iss(msg);
-//     int stat, rport, pktsize, pktrate, pktnum, sbufsize, rbufsize;
-//     string mode, rhost, lhost, proto;
-//     iss >> mode >>stat >> rhost >> rport >> proto >> pktsize >> pktrate >> pktnum >> sbufsize >> lhost >> rbufsize;
-// }
-
-
-// int TCP_thread(void* arg) {
-    
-
-//     char buf[1000000]; // 1MB buffer
-//     if (strcmp(mode,"send") == 0){
-//         if (send(client_socket, &buf, sizeof(msg), 0) < 0) {
-//             std::cerr << "Failed to send data" << std::endl;
-//             closesocket(client_socket);
-//             delete client_info;
-//             return 0;
-//         }
-//     }else if (strcmp(msg, "RECV") == 0){
-    
-//     }
-
-//     closesocket(client_socket);
-//     delete client_info;
-//     return 0;
-// }
-
-// int UDP_thread(struct sockaddr_in TCP_Clnt_Addr){
-//     while (true)
-//     {
-//         if (recvfrom(UDP_client_socket, &buf, 1000000, 0, nullptr, nullptr) == SOCKET_ERROR) {
-//             std::cerr << "Failed to connect to server. Error: " << WSAGetLastError() << std::endl;
-//             closesocket(UDP_client_socket);
-//             return;
-//         }
-//     }
-
-//     return 0;
-// }
 
 int main(int argc, char *argv[]){
     Net_opt net_opt;

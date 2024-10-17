@@ -21,7 +21,10 @@ class ClientInfo {
     public:
         int socket;
         struct sockaddr_in addr;
-        int msg[6];
+        int msg[6]; //0: mode, 1: stat, 2: proto, 3: pktsize, 4: pktrate, 5: pktnum
+        int snr_buf[2];
+        std::string host;
+        int port;
 };
 
 
