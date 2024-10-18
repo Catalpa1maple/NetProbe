@@ -1,4 +1,4 @@
-#ifdef WIN32
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -14,12 +14,7 @@
 #include <unistd.h>
 #include <string>
 #include <cstring>
-#include <iomanip>
 #include <errno.h>
-#include <iostream>
-#include <getopt.h>
-#include <string>
-#include "NetProbe.h"
 #define SOCKET int
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
@@ -33,6 +28,12 @@
 
 #endif
 using namespace std;
+#include <iomanip>
+#include <iostream>
+#include <getopt.h>
+#include <string>
+#include <sys/time.h>
+#include "NetProbe.h"
 
 
 int* generate_msg(class Net_opt net_opt){
@@ -373,9 +374,7 @@ void init_client(class Net_opt net_opt){
                 pkt_index++;
             }
 }}}
-#ifdef WIN32
-    WSACleanup();
-#endif
+
 
 
 
