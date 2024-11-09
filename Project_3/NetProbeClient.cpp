@@ -33,22 +33,37 @@ using namespace std;
 #include <getopt.h>
 #include <string>
 #include <sys/time.h>
-#include "NetProbe.h"
+#include "Threadspool.h"
 
 
 int* generate_msg(class Net_opt net_opt){
-    int mode,proto,pktsate;
+    int mode,proto,pktsate,presist;
     if (net_opt.proto == "TCP")proto = 0;else if (net_opt.proto == "UDP")proto = 1;
-    if (net_opt.mode == Net_opt::SEND)mode = 0;else if (net_opt.mode == Net_opt::RECV)mode = 1; 
+    if (net_opt.mode == Net_opt::SEND)mode = 0;
+    else if (net_opt.mode == Net_opt::RECV)mode = 1; 
+    else if (net_opt.mode == Net_opt::RESPONSE)mode = 2;
     if (net_opt.pktnum == infinite)net_opt.pktnum = 0;
-    int* msg = new int[6];
+    if(net_opt.isPresistent == "Yes")presist = 1;else presist = 0;
+    int* msg = new int[7];
     msg[0] = mode;
     msg[1] = net_opt.stat;
     msg[2] = proto;
     msg[3] = net_opt.pktsize;
     msg[4] = net_opt.pktrate;
     msg[5] = net_opt.pktnum;
+    msg[6] = presist;
         return msg;
+}
+
+void stat_cout_response(double elap, int rep, double min, double max, double avg, double jitter){
+    cout <<  "Elapsed " << fixed << setprecision(2) << elap << "s ";
+    cout << "Replies " << rep << " ";
+    cout << "Min " << min << "ms ";
+    cout << "Max " << max << "ms ";
+    cout << "Avg " << avg << "ms ";
+    cout << "Jitter " << jitter << "ms  ";
+    cout << "\r";
+    cout.flush();
 }
 
 void stat_cout(int mode, double stat, int pkts, int lossnum, double lossrate, double rate, int jitter, int index){
@@ -143,6 +158,10 @@ void init_client(class Net_opt net_opt){
     if (retries == 0) {
         cout << "Failed to receive port after multiple attempts" << endl;
     }
+
+
+
+
     serv_addr.sin_port = htons(port);      //Change to the port that server send back
     closesocket(TCP_client_socket);
 
@@ -158,6 +177,84 @@ void init_client(class Net_opt net_opt){
             return;
         }
         cout << "connected to server, port " << port << endl;
+
+
+    /*
+        Client Response Mode 
+    */
+        if(net_opt.mode == Net_opt::RESPONSE){ 
+            int stat_time = 0, replies = 0;
+            if (net_opt.pktrate == 1000) net_opt.pktrate = 10; //Default 10/s in Response 
+            float SendDelay = 0.0;
+            double rep_time_sum =0, min=999999, max=0, avg=0;
+            int NumItv = 0; double MeanJitter = 0, MeanRecvItv = 0; // For jitter calculation
+            struct timeval SendTime, RecvTime, LastRecvTime, startTime, endTime;
+            gettimeofday(&startTime, NULL);         // Get intial start time
+            char req[] = "Hi"; 
+
+            for(int i=0;i<net_opt.pktnum;i++){
+                if (send(data_client_socket, req, sizeof(req), 0) == SOCKET_ERROR) {
+                        std::cerr << "Failed to send data" << std::endl;closesocket(data_client_socket);
+                        return;} 
+                // puts("UDP Response Mode Sent");
+                gettimeofday(&SendTime, NULL);
+                int r = recv(data_client_socket, &req, sizeof(req), 0);
+                if(r == SOCKET_ERROR){
+                    std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
+                    closesocket(data_client_socket);
+                    return;
+                }
+                // puts("UDP Response Mode Received");
+                gettimeofday(&RecvTime, NULL);
+                if(net_opt.pktrate != 0) {
+                SendDelay += 1000000/(float)net_opt.pktrate;} //Set Delay for packet rate
+                replies++;
+                double rep_time = (double)(RecvTime.tv_sec - SendTime.tv_sec)*1000 + (double)(RecvTime.tv_usec - SendTime.tv_usec)/1000;
+                rep_time_sum += rep_time; // All rep time unit in ms
+                if(rep_time < min)min = rep_time;
+                if(rep_time > max)max = rep_time;
+                avg = rep_time_sum/(double)replies;
+
+                if(i > 0){
+                double RecvItv = (double)(RecvTime.tv_sec - LastRecvTime.tv_sec)*1000 +
+                (double)(RecvTime.tv_usec - LastRecvTime.tv_usec)/1000; 
+                ++NumItv;   
+                if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
+                MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
+                }
+                gettimeofday(&LastRecvTime, NULL);
+
+                gettimeofday(&endTime, NULL);
+                double elapsed = (double)(endTime.tv_sec - startTime.tv_sec)*1000000 + (double)(endTime.tv_usec - startTime.tv_usec);
+
+                stat_time = net_opt.stat*1000;
+                while (elapsed < SendDelay && net_opt.pktrate != 0) {
+                    elapsed += 10000; //10ms 
+                    Sleep(10);
+                }
+                if(stat_time < elapsed){
+                    stat_cout_response(elapsed/1000000,replies,min,max,avg,MeanJitter); 
+                    stat_time += stat_time; 
+                }
+                if(net_opt.isPresistent == "No") // Reconnect TCP for non-presistent
+                {
+                    closesocket(data_client_socket);
+                    data_client_socket = socket(AF_INET, SOCK_STREAM, 0);
+                    if (data_client_socket == INVALID_SOCKET) {
+                        cerr << "Failed to create client socket. Error: " << WSAGetLastError() << endl;
+                        return;
+                    }
+                    int opt = 1;
+                    setsockopt(data_client_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+                    serv_addr.sin_port = htons(port+i+1);
+                    if (connect(data_client_socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == SOCKET_ERROR) {
+                        cerr << "Failed to connect to HTTP server. Error: " << WSAGetLastError() << endl;
+                        closesocket(data_client_socket);
+                        return;
+                    }
+                }
+        }}
+
 
 
     
@@ -205,7 +302,7 @@ void init_client(class Net_opt net_opt){
                         gettimeofday(&StartTime, NULL);}
                 }
             }
-    }
+        }
 
     /*
         Client Recv Mode
@@ -266,6 +363,68 @@ void init_client(class Net_opt net_opt){
             std::cerr << "Failed to create client socket. Error: " << WSAGetLastError() << std::endl;
             return;
         }
+
+        /*
+        Client Response Mode 
+        */
+        if(net_opt.mode == Net_opt::RESPONSE){ 
+            int stat_time = 0, replies = 0;
+            if (net_opt.pktrate == 1000) net_opt.pktrate = 10; //Default 10/s in Response 
+            float SendDelay = 0.0;
+            double rep_time_sum =0, min=999999, max=0, avg=0;
+            int NumItv = 0; double MeanJitter = 0, MeanRecvItv = 0; // For jitter calculation
+            struct timeval SendTime, RecvTime, LastRecvTime, startTime, endTime;
+            gettimeofday(&startTime, NULL);         // Get intial start time
+            
+            char req[] = "Hi";
+            for(int i=0;i<net_opt.pktnum;i++){
+                
+                if (sendto(data_client_socket, req, sizeof(req), 0, (struct sockaddr*)&serv_addr, len) == SOCKET_ERROR) {
+                        std::cerr << "Failed to send data" << std::endl;closesocket(data_client_socket);
+                        return;} 
+                // puts("UDP Response Mode Sent");
+                gettimeofday(&SendTime, NULL);
+                int r = recvfrom(data_client_socket, &req, sizeof(req), 0, (struct sockaddr*)&clin_addr, &len);
+                if(r == SOCKET_ERROR){
+                    std::cerr << "Failed to receive data " << strerror(errno) <<std::endl;
+                    closesocket(data_client_socket);
+                    return;
+                }
+                // puts("UDP Response Mode Received");
+                gettimeofday(&RecvTime, NULL);
+                if(net_opt.pktrate != 0) {
+                SendDelay += 1000000/(float)net_opt.pktrate;} //Set Delay for packet rate
+                replies++;
+                double rep_time = (double)(RecvTime.tv_sec - SendTime.tv_sec)*1000 + (double)(RecvTime.tv_usec - SendTime.tv_usec)/1000;
+                rep_time_sum += rep_time; // All rep time unit in ms
+                if(rep_time < min)min = rep_time;
+                if(rep_time > max)max = rep_time;
+                avg = rep_time_sum/(double)replies;
+
+                if(i > 0){
+                double RecvItv = (double)(RecvTime.tv_sec - LastRecvTime.tv_sec)*1000 +
+                (double)(RecvTime.tv_usec - LastRecvTime.tv_usec)/1000; 
+                ++NumItv;   
+                if (NumItv) MeanJitter = (MeanJitter*NumItv + (((RecvItv - MeanRecvItv)>=0) ? (RecvItv - MeanRecvItv) : (MeanRecvItv - RecvItv)))/(NumItv+1);
+                MeanRecvItv = (MeanRecvItv*NumItv + RecvItv)/(NumItv+1);
+                }
+                gettimeofday(&LastRecvTime, NULL);
+
+                gettimeofday(&endTime, NULL);
+                double elapsed = (double)(endTime.tv_sec - startTime.tv_sec)*1000000 + (double)(endTime.tv_usec - startTime.tv_usec);
+
+                stat_time = net_opt.stat*1000;
+                while (elapsed < SendDelay && net_opt.pktrate != 0) {
+                    elapsed += 10000; //10ms 
+                    Sleep(10);
+                }
+                if(stat_time < elapsed){
+                    // cout << rep_time << endl;
+                    stat_cout_response(elapsed/1000000,replies,min,max,avg,MeanJitter);
+                    stat_time += stat_time;
+                }
+        }}
+        
 
         if(net_opt.mode == Net_opt::SEND){
             float SendDelay = 0.0;
@@ -384,6 +543,7 @@ int main(int argc, char *argv[]){
     static struct option options[] = {
             {"send",     no_argument, 0, '1'},
             {"recv",     no_argument, 0, '2'},
+            {"response", no_argument, 0, '3'},
             {"stat",     required_argument, 0, 'a'},
             {"rhost",    required_argument, 0, 'b'},
             {"rport",    required_argument, 0, 'c'},
@@ -393,6 +553,7 @@ int main(int argc, char *argv[]){
             {"pktnum",   required_argument, 0, 'g'},
             {"sbufsize", required_argument, 0, 'h'},
             {"rbufsize", required_argument, 0, 'k'},
+            {"presist",  required_argument, 0, 'l'},
             {0, 0, 0, 0}
             };
     int option_index = 0;
@@ -404,6 +565,9 @@ int main(int argc, char *argv[]){
                     break;
                 case '2':
                     net_opt.mode = Net_opt::RECV;
+                    break;
+                case '3':
+                    net_opt.mode = Net_opt::RESPONSE;
                     break;
                 case 'a':
                     net_opt.stat = atoi(optarg);
@@ -443,6 +607,9 @@ int main(int argc, char *argv[]){
                 case 'k':   
                     net_opt.rbufsize = atoi(optarg);
                     break;
+                case 'l':
+                    net_opt.isPresistent = optarg;
+                    break;
                 default:
                     return EXIT_FAILURE;
             }
@@ -455,6 +622,7 @@ int main(int argc, char *argv[]){
         std::cout << "Mode:                ";
         if (net_opt.mode == Net_opt::SEND) std::cout << "SEND" << std::endl;
         else if (net_opt.mode == Net_opt::RECV) std::cout << "RECV" << std::endl;
+        else if (net_opt.mode == Net_opt::RESPONSE) std::cout << "RESPONSE" << std::endl;
         std::cout << "Stat:                " << net_opt.stat << " ms" << std::endl;
         std::cout << "Remote Host:         " << net_opt.rhost << std::endl;
         std::cout << "Remote Port:         " << net_opt.rport << std::endl;
@@ -466,6 +634,7 @@ int main(int argc, char *argv[]){
         else std::cout << net_opt.pktnum << std::endl;
         std::cout << "Send Buffer Size:    " << net_opt.sbufsize << " bytes" << std::endl;
         std::cout << "Receive Buffer Size: " << net_opt.rbufsize << " bytes" << std::endl;
+        std::cout << "Presistent:          " << net_opt.isPresistent << endl;
 
         init_client(net_opt);
 }

@@ -15,75 +15,13 @@
 #include <getopt.h>
 #include <string>
 #include <thread>
-#include "NetProbe.h"
+#include <sys/time.h>
+#include "Threadspool.h"
 using namespace std;
 
-int thread_do_work(void *arg) {
-    ThreadPool *pool = (ThreadPool *)arg;
-    Task task;
-    while (1) {
-        mtx_lock(&(pool->lock));
-        while (pool->count == 0 && !pool->stop) {
-            cnd_wait(&(pool->notify), &(pool->lock));
-        }
-        if (pool->stop) {
-            mtx_unlock(&(pool->lock));
-            break;
-        }
-        task.function = pool->task_queue[pool->front].function;
-        task.argument = pool->task_queue[pool->front].argument;
-        pool->front = (pool->front + 1) % QUEUE_SIZE;
-        pool->count--;
-        mtx_unlock(&(pool->lock));
-        (*(task.function))(task.argument);
-    }
-    return 0;
-}
-
-void threadpool_add_task(ThreadPool *pool, void (*function)(void*), void *argument) {
-    mtx_lock(&(pool->lock));
-    if (pool->count == QUEUE_SIZE) {
-        printf("Queue is full\n");
-        mtx_unlock(&(pool->lock));
-        return;
-    }
-    pool->task_queue[pool->rear].function = function;
-    pool->task_queue[pool->rear].argument = argument;
-    pool->rear = (pool->rear + 1) % QUEUE_SIZE;
-    pool->count++;
-    cnd_signal(&(pool->notify));
-    mtx_unlock(&(pool->lock));
-}
-
-void threadpool_init(ThreadPool *pool) {
-    pool->front = pool->rear = pool->count = 0;
-    pool->stop = 0;
-    mtx_init(&(pool->lock), mtx_plain);
-    cnd_init(&(pool->notify));
-    for (int i = 0; i < MAX_THREADS; i++) {
-        thrd_create(&(pool->threads[i]), thread_do_work, (void*)pool);
-    }
-}
-
-void modify_threadpool(ThreadPool *pool, int num) {
-    pool->threads
-    for (int i = 0; i < num; i++) {
-        thrd_create(&(pool->threads[i]), thread_do_work, (void*)pool);
-    }
-}
-
-void threadpool_destroy(ThreadPool *pool) {
-    mtx_lock(&(pool->lock));
-    pool->stop = 1;
-    cnd_broadcast(&(pool->notify));
-    mtx_unlock(&(pool->lock));
-    for (int i = 0; i < MAX_THREADS; i++) {
-        thrd_join(pool->threads[i], NULL);
-    }
-    mtx_destroy(&(pool->lock));
-    cnd_destroy(&(pool->notify));
-}
-
+//Declare some global variables
+int TCP_client = 0, UDP_client = 0;
+string tcpcca;
 
 
 void handle_msg(ClientInfo *client_info){
@@ -112,6 +50,13 @@ void TCP_thread(ClientInfo* client_info){
     TCP_Trd.sin_addr.s_addr = client_info->addr.sin_addr.s_addr; //Client IP
 
     int TCP_Trd_Socket = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1;
+    if(!tcpcca.empty()){
+        if(setsockopt(TCP_Trd_Socket, IPPROTO_TCP, TCP_CONGESTION, tcpcca.c_str(), tcpcca.length()) < 0) {
+        cerr << "Failed to set TCP congestion control algorithm: " << strerror(errno) << endl;
+    }}
+    setsockopt(TCP_Trd_Socket, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
+
     ::bind(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, sizeof(TCP_Trd));
     listen(TCP_Trd_Socket, 5);
     socklen_t len = sizeof(TCP_Trd);
@@ -126,9 +71,9 @@ void TCP_thread(ClientInfo* client_info){
         return;
     }
     int new_socket = accept(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, (socklen_t*)&TCP_Trd);
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(TCP_Trd.sin_addr), ip_str, INET_ADDRSTRLEN);
-    cout << "Connected to " << ip_str << " port " << port;
+    // char ip_str[INET_ADDRSTRLEN];
+    // inet_ntop(AF_INET, &(TCP_Trd.sin_addr), ip_str, INET_ADDRSTRLEN);
+    // cout << "Connected to " << ip_str << " port " << port;
     
     //Close the original socket
     close(client_info->socket); 
@@ -137,12 +82,69 @@ void TCP_thread(ClientInfo* client_info){
     if(!client_info->snr_buf[0]) setsockopt(new_socket, SOL_SOCKET, SO_SNDBUF, &client_info->snr_buf[0], sizeof(client_info->snr_buf[0])); 
     if(!client_info->snr_buf[1]) setsockopt(new_socket, SOL_SOCKET, SO_RCVBUF, &client_info->snr_buf[1], sizeof(client_info->snr_buf[1]));
 
+
+    /*
+        Client Response Mode
+    */
+    if(client_info->msg[0] == 2){
+        char* req = new char[4]; 
+        
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            if(i > 0 && !client_info->msg[6]){
+                close(new_socket);
+                close(TCP_Trd_Socket);
+                usleep(1000); //Ensure the socket is closed
+
+                TCP_Trd_Socket = socket(AF_INET, SOCK_STREAM, 0);
+                if(TCP_Trd_Socket < 0) {
+                    cerr << "Failed to create HTTP socket" << strerror(errno) << endl;
+                    delete[] req;
+                    return;
+                }
+                    
+                int opt = 1;
+                setsockopt(TCP_Trd_Socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+                TCP_Trd.sin_port = htons(port+i);
+                if(::bind(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, sizeof(TCP_Trd)) < 0) {
+                    cerr << "Failed to bind HTTP socket " << strerror(errno) << endl;
+                    delete[] req;
+                    return;
+                }
+                if(listen(TCP_Trd_Socket, 5) < 0) {
+                    cerr << "Failed to listen on HTTP socket " << strerror(errno) << endl;
+                    delete[] req;
+                    return;
+                }
+                new_socket = accept(TCP_Trd_Socket, (struct sockaddr*)&TCP_Trd, (socklen_t*)&TCP_Trd);
+                if ( new_socket < 0) {
+                    cerr << "Failed to accept connection " << strerror(errno) << endl;
+                    delete[] req;
+                    return;
+                }
+
+            }
+
+            if (recv(new_socket, req, 4, 0) < 0) {
+                cerr << "Failed to receive data" << strerror(errno) << endl;close(new_socket);
+                return;}
+            if (send(new_socket, req, 4, 0) <0) {
+                cerr << "Failed to send data " << strerror(errno) << endl;close(new_socket);
+                return;}
+
+            if(!client_info->msg[6]){ //Reconnect for each packet
+                close(new_socket);
+                close(TCP_Trd_Socket);
+            }
+        }
+    }
+
+
     /*
         Client Send Mode  -- Server Receiving 
     */
    int buf[client_info->msg[3]/4];
     if(client_info->msg[0] == 0){    
-        cout << " SEND, TCP, " << client_info->msg[4] << " Bps" << endl;
+
         for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
             int r = 0; //bytes received from client
             while(!r){
@@ -155,7 +157,6 @@ void TCP_thread(ClientInfo* client_info){
         Client Recv Mode  -- Server Sending 
     */
     else if(client_info->msg[0] == 1){
-        cout << " RECV, TCP, " << client_info->msg[4] << " Bps" << endl;   
 
         float SendDelay = 0.0;
         if(client_info->msg[4] != 0) {  //Msg : [3: pktsize, 4: pktrate]
@@ -179,15 +180,13 @@ void TCP_thread(ClientInfo* client_info){
                 }
         }
     } 
+
     /*
         Free up the connection
     */
-    // cout << "Mission Completed, ternimating connection" << endl;
     close(new_socket);
     delete client_info;
 }
-
-
 
 
 void UDP_thread(ClientInfo* client_info){
@@ -215,7 +214,7 @@ void UDP_thread(ClientInfo* client_info){
     }
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(UDP_Trd.sin_addr), ip_str, INET_ADDRSTRLEN);
-    cout << "Connected to " << ip_str << " port " << port;
+    // cout << "Connected to " << ip_str << " port " << port;
     
 
     //Close the original socket
@@ -227,11 +226,33 @@ void UDP_thread(ClientInfo* client_info){
 
 
     /*
+        Client Response Mode
+    */
+    if(client_info->msg[0] == 2){
+        char* req = new char[4]; 
+        struct sockaddr_in client_addr = client_info->addr; //Client IP;
+        client_addr.sin_port = htons(client_info->port); //Client Port
+        
+        for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
+            if (recvfrom(UDP_Trd_Socket, &req, sizeof(req), 0, (struct sockaddr*)&UDP_Trd, &len) < 0) {
+                cerr << "Failed to receive data" << strerror(errno) << endl;close(UDP_Trd_Socket);
+                return;}
+            // puts("UDP Response Mode Received");
+            if (sendto(UDP_Trd_Socket, req, sizeof(req), 0, (struct sockaddr*)&UDP_Trd, len) <0) {
+                cerr << "Failed to send data " << strerror(errno) << endl;close(UDP_Trd_Socket);
+                return;}
+            // puts("UDP Response Mode Sent");
+            // cout << req << endl;
+        }
+    }
+
+
+    /*
         Client Send Mode  -- Server Receiving 
     */
     int buf[client_info->msg[3]/4];
     if(client_info->msg[0] == 0){    
-        cout << " SEND, UDP, " << client_info->msg[4] << " Bps" << endl;
+
         for(int i=0;i<client_info->msg[5];i++){     //msg[5] is pktnum
             recvfrom(UDP_Trd_Socket, buf, sizeof(buf), 0, (struct sockaddr*)&UDP_Trd, &len);
         }
@@ -240,7 +261,7 @@ void UDP_thread(ClientInfo* client_info){
         Client Recv Mode  -- Server Sending 
     */
     else if(client_info->msg[0] == 1){
-        cout << " RECV, UDP, " << client_info->msg[4] << " Bps" << endl;
+
         struct sockaddr_in client_addr = client_info->addr; //Client IP;
         client_addr.sin_port = htons(client_info->port); //Client Port
         float SendDelay = 0.0;
@@ -273,10 +294,8 @@ void UDP_thread(ClientInfo* client_info){
     }
 } 
 
-
-
-
 void init_server(class Net_opt net_opt){
+        ThreadPool threadpool(net_opt.poolsize);
 
         struct sockaddr_in TCP_Serv_Addr,UDP_Serv_Addr;
         memset(&TCP_Serv_Addr, 0, sizeof(TCP_Serv_Addr));
@@ -320,6 +339,9 @@ void init_server(class Net_opt net_opt){
 
     cout << "Server is listening on port " << net_opt.lport << endl;
 
+    struct timeval StartTime, ElapsedTime;
+    gettimeofday(&StartTime, NULL);                 // Get intial start time
+    
 
     while (true) //Main thread to handle TCP connection
     {
@@ -348,38 +370,32 @@ void init_server(class Net_opt net_opt){
         if(!net_opt.sbufsize)client_info->snr_buf[0] = net_opt.sbufsize;
         if(!net_opt.rbufsize)client_info->snr_buf[1] = net_opt.rbufsize;
         if (recv(TCP_Client_Socket, &client_info->msg, sizeof(client_info->msg), 0) < 0) {
-            std::cerr << "Failed to receive data" << std::endl;
+            cerr << "Failed to receive data" << endl;
             close(TCP_Client_Socket);
             delete client_info;
             return;
-        }handle_msg(client_info);    //Print out the msg
+        }handle_msg(client_info);
 
         /*
             Create a thread TCP or UDP to handle the connection separately
             where msg[2] is the protocol 
             0 for TCP and 1 for UDP
         */
-        if(client_info->msg[2] == 0){        // Create TCP thread
-            try {
-                thread tcpThread(TCP_thread, client_info);
-                tcpThread.detach();
-            } catch (const system_error& e) {
-                cerr << "Error creating thread: " << e.what() << endl;
-                close(client_info->socket);
-                delete client_info;
-            }
+        if (client_info->msg[2] == 0) {
+            threadpool.enqueue(client_info,TCP_thread);
+            TCP_client++;
+        } else if (client_info->msg[2] == 1) {
+            threadpool.enqueue(client_info,UDP_thread);
+            UDP_client++;
         }
-        else if((client_info->msg[2]) == 1){   // Create UDP thread
-            try {
-                thread udpThread(UDP_thread, client_info);
-                udpThread.detach();
-            } catch (const system_error& e) {
-                cerr << "Error creating thread: " << e.what() << endl;
-                close(client_info->socket);
-                delete client_info;
-            }
-        }
-
+        gettimeofday(&ElapsedTime, NULL);
+        cout << "Elapsed " << (ElapsedTime.tv_sec - StartTime.tv_sec) << "s ";
+        cout << "ThreadPool " << threadpool.get_active_threads() + 1 << "/" << threadpool.get_current_pool_size();
+        cout << " TCP Clients " << TCP_client << " UDP Clients " << UDP_client; 
+        cout<< "\r";
+        cout.flush();
+        
+        
 
     }
 
@@ -395,16 +411,25 @@ int main(int argc, char *argv[]){
             {"lport",    required_argument, 0, 'b'},
             {"sbufsize", required_argument, 0, 'c'},
             {"rbufsize", required_argument, 0, 'd'},
+            {"tcpcca",   required_argument, 0, 't'},
+            {"poolsize", required_argument, 0, 'p'},
             {0, 0, 0, 0}};
 
     int option_index = 0;
     int opt;
     while ((opt = getopt_long_only(argc, argv, "", options, &option_index)) != -1) {
             switch (opt) { 
+                case 'p':
+                    std::cout << "poolsize: " << optarg << std::endl;
+                    net_opt.poolsize = atoi(optarg);
+                    break;
+                case 't':
+                    std::cout << "tcpcca: " << optarg << std::endl;
+                    net_opt.tcpcca = optarg; tcpcca = optarg;
+                    break;
                 case 'a':
                     std::cout << "lhost: " << optarg << std::endl;
                     net_opt.lhost = optarg;
-                    
                     break;
                 case 'b':
                     std::cout << "lport: " << optarg << std::endl;
