@@ -49,7 +49,7 @@ class ClientInfo {
 
 struct Task {
     ClientInfo* client_info;
-    function<void(ClientInfo*)> function;
+    std::function<void(ClientInfo*)> function;
 };
 
 typedef struct {
