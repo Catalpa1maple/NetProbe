@@ -117,8 +117,17 @@ void init_client(class Net_opt net_opt){
         int server = 0;
         int ret, i;
         char *ptr = NULL;
+        char proto[5];
 
         strncpy(dest_url, net_opt.url.c_str(), 8192);
+
+        /* ---------------------------------------------------------- *
+        * the first : ends the protocol string, i.e. http            *
+        * ---------------------------------------------------------- */
+        if (strstr(dest_url, "http:") || strstr(dest_url, "https:"))
+            strncpy(proto, dest_url, (strchr(dest_url, ':') - dest_url));
+        else
+            strcpy(proto, "https");
 
         InitializeSockets();
         OpenSSL_add_all_algorithms();
@@ -128,6 +137,7 @@ void init_client(class Net_opt net_opt){
 
         outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
 
+        if(strcmp(proto,"https") == 0){
         if (SSL_library_init() < 0)
             BIO_printf(outbio, "Could not initialize the OpenSSL library !\n");
 
@@ -144,7 +154,7 @@ void init_client(class Net_opt net_opt){
 
         ssl = SSL_new(ctx);
 
-        server = create_socket(dest_url, outbio);
+        server = create_socket(dest_url, outbio);       
         if (server != 0)
             BIO_printf(outbio, "Successfully made the TCP connection to: %s.\n", dest_url);
 
@@ -251,59 +261,39 @@ void init_client(class Net_opt net_opt){
         BIO_printf(outbio, "\nFinished SSL/TLS connection with server: %s.\n", dest_url);
 
         ShutdownSockets();
-
         return;
+        }
 
-        // int port = 80; // Default port
-        // std::string request = "GET / HTTP/1.1\r\n";
-        // request += "Host: " + net_opt.url + "\r\n";
-        // request += "Connection: close\r\n";
-        // request += "\r\n";
-
-
-        // struct sockaddr_in serv_addr;
-        // memset(&serv_addr, 0, sizeof(serv_addr));
-        // serv_addr.sin_family = AF_INET;
-        // memcpy(&serv_addr.sin_addr.s_addr, host->h_addr, host->h_length);
-        // serv_addr.sin_port = htons(port);
+        else{
+        int port = 80; // Default port
+        std::string request = "GET / HTTP/1.1\r\n";
+        request += "Host: " + net_opt.url + "\r\n";
+        request += "Connection: close\r\n";
+        request += "\r\n";
 
 
-        // SOCKET httpsock = socket(AF_INET, SOCK_STREAM, 0);
-        // if (httpsock == INVALID_SOCKET) {
-        //     cerr << "Failed to create HTTP socket. Error: " << WSAGetLastError() << endl;
-        //     return;
-        // }
+        
+        int httpsock = create_socket(dest_url, outbio);     
+        cout << "Successfully made the TCP connection to: " <<  dest_url << endl;  
+            if (send(httpsock, request.c_str(), request.length(), 0) == SOCKET_ERROR) {
+                cerr << "Failed to send data. Error: " << WSAGetLastError() << endl;
+                closesocket(httpsock);
+                return;
+            }
 
-        //     struct hostent* host = gethostbyname(net_opt.url.c_str());
-        //     if(!host){
-        //         cerr << "Failed to resolve host: " << net_opt.url << endl;
-        //         return;
-        //     }   
+            char buffer[4096];
+            string response;
+            int bytes_received;
 
-        //     if(connect(httpsock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == SOCKET_ERROR){
-        //         cerr << "Failed to connect to HTTP server. Error: " << WSAGetLastError() << endl;
-        //         closesocket(httpsock);
-        //         return;
-        //     }
+            while ((bytes_received = recv(httpsock, buffer, sizeof(buffer), 0)) > 0) {
+                response.append(buffer, bytes_received);
+            }
 
-        //     if (send(httpsock, request.c_str(), request.length(), 0) == SOCKET_ERROR) {
-        //         cerr << "Failed to send data. Error: " << WSAGetLastError() << endl;
-        //         closesocket(httpsock);
-        //         return;
-        //     }
-
-        //     char buffer[4096];
-        //     string response;
-        //     int bytes_received;
-
-        //     while ((bytes_received = recv(httpsock, buffer, sizeof(buffer), 0)) > 0) {
-        //         response.append(buffer, bytes_received);
-        //     }
-
-        // closesocket(httpsock);
-        // cout << response << endl;
-        // return;
+        closesocket(httpsock);
+        cout << response << endl;
+        return;
     }
+   }
 
 
     #ifdef WIN32

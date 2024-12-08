@@ -294,15 +294,12 @@ void UDP_thread(ClientInfo* client_info){
         delete client_info;
     }
 } 
-
-const char reply[] = "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/html; charset=UTF-8\r\n"
-    "Connection: close\r\n"
-    "Cache-Control: no-cache, no-store, must-revalidate\r\n"
-    "Pragma: no-cache\r\n"
-    "Expires: 0\r\n"
-    "\r\n"
-    "<!DOCTYPE html>\n"
+const char headers[] = "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: text/html\r\n"
+                            "Connection: close\r\n"
+                            "\r\n";
+        
+const char reply[] ="<!DOCTYPE html>\n"
     "<html lang=\"en\">\n"
     "<head>\n"
     "    <meta charset=\"UTF-8\">\n"
@@ -358,11 +355,6 @@ void HTTP_thread(ClientInfo* client_info){
     }
 
     if (strncmp(request, "GET / HTTP/1.1", 14) == 0) {
-        const char* headers = "HTTP/1.1 200 OK\r\n"
-                            "Content-Type: text/html\r\n"
-                            "Connection: close\r\n"
-                            "\r\n";
-        
         // Send headers first
         if(send(newhttp, headers, strlen(headers), 0) < 0){
             std::cerr << "Failed to send headers" << std::endl;
@@ -435,8 +427,12 @@ void HTTPS_thread(ClientInfo* client_info){
             
             // Only respond to GET requests
             if (bytes > 0 && strncmp(request, "GET ", 4) == 0) {
-                int stlen = strlen(reply);
-                if (SSL_write(ssl, reply, stlen) != stlen) {
+                int stlen_header = strlen(headers);
+                if (SSL_write(ssl, headers, stlen_header) != stlen_header) {
+                    printf("\n SSL_write failed!\n");
+                }
+                int stlen_content = strlen(reply);
+                if (SSL_write(ssl, reply, stlen_content) != stlen_content) {
                     printf("\n SSL_write failed!\n");
                 }
             }

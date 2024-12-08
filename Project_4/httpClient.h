@@ -381,14 +381,6 @@ int create_socket(char url_str[], BIO *out) {
 		url_str[strlen(url_str)] = '\0';
 
 	/* ---------------------------------------------------------- *
-	* the first : ends the protocol string, i.e. http            *
-	* ---------------------------------------------------------- */
-	if (strstr(url_str, "http:") || strstr(url_str, "https:"))
-		strncpy(proto, url_str, (strchr(url_str, ':') - url_str));
-	else
-		strcpy(proto, "https");
-
-	/* ---------------------------------------------------------- *
 	* the hostname starts after the "://" part                   *
 	* ---------------------------------------------------------- */
 	if (strstr(url_str, "://"))
@@ -438,8 +430,8 @@ int create_socket(char url_str[], BIO *out) {
 			hostname, tmp_ptr, port);
 		exit(-1);
 	}
+    return sockfd;
 
-	return sockfd;
 }
 
 
