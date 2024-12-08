@@ -17,6 +17,7 @@
 #include <thread>
 #include <sys/time.h>
 #include "Threadspool.h"
+#include "httpServer.h"
 using namespace std;
 
 //Declare some global variables
@@ -294,8 +295,192 @@ void UDP_thread(ClientInfo* client_info){
     }
 } 
 
+const char reply[] = "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/html; charset=UTF-8\r\n"
+    "Connection: close\r\n"
+    "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+    "Pragma: no-cache\r\n"
+    "Expires: 0\r\n"
+    "\r\n"
+    "<!DOCTYPE html>\n"
+    "<html lang=\"en\">\n"
+    "<head>\n"
+    "    <meta charset=\"UTF-8\">\n"
+    "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+    "    <title>IERG 4180Project 4</title>\n"
+    "</head>\n"
+    "<body>\n"
+    "    <h1>IERG 4180 Project 4</h1>\n"
+    "    <p>HTTPS Server</p>\n"
+    "</body>\n"
+    "</html>\n";
+// reply message for Http and Https
+
+void HTTP_thread(ClientInfo* client_info){
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET; 
+    serv_addr.sin_port = htons(client_info->http_port);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+
+    int HTTP_Socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (HTTP_Socket < 0) {
+        std::cerr << "Failed to create HTTP socket" << std::endl;
+        return;
+    }
+    if (::bind(HTTP_Socket, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        std::cerr << "Failed to bind HTTP socket" << std::endl;
+        close(HTTP_Socket);
+        return;
+    }
+    if (listen(HTTP_Socket, 5) < 0) {
+        std::cerr << "Failed to listen on HTTP socket" << std::endl;
+        close(HTTP_Socket);
+        return;
+    }
+    cout << "HTTP server listening on port " << client_info->http_port << endl;
+    socklen_t serv_addr_len = sizeof(serv_addr);
+
+    while(1){
+    int newhttp = accept(HTTP_Socket, (struct sockaddr*)&serv_addr, &serv_addr_len); 
+    if (newhttp < 0) {
+        std::cerr << "Failed to accept connection" << std::endl;
+        continue;
+    }
+
+    char request[8192];
+
+    if(recv(newhttp, &request, sizeof(request), 0) < 0){
+        std::cerr << "Failed to receive data(HTTP)" << std::endl;
+        close(newhttp);
+        close(HTTP_Socket);
+        continue;
+    }
+
+    if (strncmp(request, "GET / HTTP/1.1", 14) == 0) {
+        const char* headers = "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: text/html\r\n"
+                            "Connection: close\r\n"
+                            "\r\n";
+        
+        // Send headers first
+        if(send(newhttp, headers, strlen(headers), 0) < 0){
+            std::cerr << "Failed to send headers" << std::endl;
+            close(newhttp);
+            continue;
+        }
+        
+        // Send content
+        if(send(newhttp, reply, strlen(reply), 0) < 0){
+            std::cerr << "Failed to send content" << std::endl;
+            close(newhttp);
+            continue;
+        }
+    } else {
+        const char* response = "HTTP/1.1 404 Not Found\r\n"
+                             "Content-Type: text/html\r\n"
+                             "Content-Length: 9\r\n"
+                             "\r\n"
+                             "Not Found";
+        
+        if(send(newhttp, response, strlen(response), 0) < 0){
+            std::cerr << "Failed to send data" << std::endl;
+            close(newhttp);
+            continue;
+        }
+    }
+    close(newhttp);
+    TCP_client++;
+    }
+    close(HTTP_Socket);
+    return;
+}
+
+void HTTPS_thread(ClientInfo* client_info){
+    int httpsock;
+    SSL_CTX *ctx;
+
+    InitializeSockets();
+
+    init_openssl();
+    ctx = create_context();
+
+    configure_context(ctx);
+
+    httpsock = create_socket(client_info->https_port);
+
+    /* Handle connections */
+    while (1) {
+        struct sockaddr_in addr;
+        socklen_t len = sizeof(addr);
+        SSL *ssl;
+        // const char reply[] = "This is a test message from the server!\n";
+
+        
+        int client = accept(httpsock, (struct sockaddr*)&addr, &len);
+        if (client < 0) {
+            perror("Unable to accept");
+            exit(EXIT_FAILURE);
+        }
+
+        ssl = SSL_new(ctx);      // Create a new SSL connection
+        SSL_set_fd(ssl, client); // Associate the socket handle with it
+
+        if (SSL_accept(ssl) <= 0) { // Perform SSL/TLS handshake with peer
+            ERR_print_errors_fp(stderr);
+        }
+        else {
+            char request[4096] = {0};
+            int bytes = SSL_read(ssl, request, sizeof(request) - 1);
+            
+            // Only respond to GET requests
+            if (bytes > 0 && strncmp(request, "GET ", 4) == 0) {
+                int stlen = strlen(reply);
+                if (SSL_write(ssl, reply, stlen) != stlen) {
+                    printf("\n SSL_write failed!\n");
+                }
+            }
+
+            int bShutdownComplete = SSL_shutdown(ssl);
+
+            int countdown = 30; // Allow max 30 retries for peer to properly shutdown the SSL connection
+            while ((bShutdownComplete != 1) && (countdown--)) {
+                usleep(100);
+                bShutdownComplete = SSL_shutdown(ssl);
+                if (bShutdownComplete == -1) {
+                printf("SSL_shutdown() error = %i\n", SSL_get_error(ssl, bShutdownComplete));
+                break;
+                }
+            }
+            if ((bShutdownComplete != -1) && (countdown))
+                printf("SSL shutdown sequence completes.\n");
+            else
+                printf("SSL shutdown sequence timeout.\n");
+        }
+
+        SSL_free(ssl);       // Free the SSL connection
+        closesocket(client); // Close the socket
+        TCP_client++;
+    }
+
+    closesocket(httpsock);
+    SSL_CTX_free(ctx);
+    cleanup_openssl();
+    ShutdownSockets();
+    return;
+}
+
 void init_server(class Net_opt net_opt){
         ThreadPool threadpool(net_opt.poolsize);
+        /*
+            Create threads for handling HTTP/HTTPS connection
+        */
+        ClientInfo* client_info = new ClientInfo;
+        client_info->host = net_opt.lhost;
+        client_info->http_port = net_opt.lhttpport;
+        client_info->https_port = net_opt.lhttpsport;
+        threadpool.enqueue(client_info,HTTP_thread);
+        threadpool.enqueue(client_info,HTTPS_thread);
 
         struct sockaddr_in TCP_Serv_Addr,UDP_Serv_Addr;
         memset(&TCP_Serv_Addr, 0, sizeof(TCP_Serv_Addr));
@@ -336,8 +521,8 @@ void init_server(class Net_opt net_opt){
             close(TCP_Socket);
             return;
         }
-
-    cout << "Server is listening on port " << net_opt.lport << endl;
+    usleep(100);
+    cout << "TCP/UDP Server is listening on port " << net_opt.lport << endl;
 
     struct timeval StartTime, ElapsedTime;
     gettimeofday(&StartTime, NULL);                 // Get intial start time
@@ -345,6 +530,10 @@ void init_server(class Net_opt net_opt){
 
     while (true) //Main thread to handle TCP connection
     {
+        gettimeofday(&ElapsedTime, NULL);
+        double elapsed = (double)(ElapsedTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(ElapsedTime.tv_usec - StartTime.tv_usec);
+        if(elapsed > 2 * 1000000) server_info(elapsed, TCP_client, UDP_client,
+         threadpool.get_active_threads(), threadpool.get_current_pool_size());
         /*
             Client socket setup and connection
         */
@@ -389,11 +578,16 @@ void init_server(class Net_opt net_opt){
             UDP_client++;
         }
         gettimeofday(&ElapsedTime, NULL);
-        cout << "Elapsed " << (ElapsedTime.tv_sec - StartTime.tv_sec) << "s ";
-        cout << "ThreadPool " << threadpool.get_active_threads() + 1 << "/" << threadpool.get_current_pool_size();
-        cout << " TCP Clients " << TCP_client << " UDP Clients " << UDP_client; 
-        cout<< "\r";
-        cout.flush();
+        elapsed = (double)(ElapsedTime.tv_sec - StartTime.tv_sec)*1000000 + (double)(ElapsedTime.tv_usec - StartTime.tv_usec);
+        server_info(elapsed, TCP_client, UDP_client, 
+            threadpool.get_active_threads(), threadpool.get_current_pool_size());
+        
+        // cout << "Elapsed " << (ElapsedTime.tv_sec - StartTime.tv_sec) << "s ";
+        // cout << "ThreadPool " << threadpool.get_active_threads() + 1 << "/" << threadpool.get_current_pool_size();
+        // cout << " TCP Clients " << TCP_client << " UDP Clients " << UDP_client; 
+        // cout<< "\r";
+        // cout.flush();
+        
         
         
 
@@ -407,12 +601,14 @@ void init_server(class Net_opt net_opt){
 int main(int argc, char *argv[]){
     Net_opt net_opt;
     static struct option options[] = {
-            {"lhost",    required_argument, 0, 'a'},
-            {"lport",    required_argument, 0, 'b'},
-            {"sbufsize", required_argument, 0, 'c'},
-            {"rbufsize", required_argument, 0, 'd'},
-            {"tcpcca",   required_argument, 0, 't'},
-            {"poolsize", required_argument, 0, 'p'},
+            {"lhost",     required_argument, 0, 'a'},
+            {"lport",     required_argument, 0, 'b'},
+            {"lhttpport", required_argument, 0, 'e'},
+            {"lhttpsport",required_argument, 0, 'f'},
+            {"sbufsize",  required_argument, 0, 'c'},
+            {"rbufsize",  required_argument, 0, 'd'},
+            {"tcpcca",    required_argument, 0, 't'},
+            {"poolsize",  required_argument, 0, 'p'},
             {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -442,6 +638,14 @@ int main(int argc, char *argv[]){
                 case 'd':
                     std::cout << "rbufsize: " << optarg << std::endl;
                     net_opt.rbufsize = atoi(optarg);
+                    break;
+                case 'e':
+                    std::cout << "lhttpport: " << optarg << std::endl;
+                    net_opt.lhttpport = atoi(optarg);
+                    break;
+                case 'f':
+                    std::cout << "lhttpsport: " << optarg << std::endl;
+                    net_opt.lhttpsport = atoi(optarg);
                     break;
                 default:
                     std::cout << "Invalid option" << std::endl;
