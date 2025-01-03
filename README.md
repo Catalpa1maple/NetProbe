@@ -1,5 +1,5 @@
 # NetProbe
--- a network software for testing network algorithm and protocols performance    
+A network software for testing network algorithm and protocols performance    
 <br><br>
 
 ## **4 Mode:** SEND RECV RESPONSE HTTP/S  
