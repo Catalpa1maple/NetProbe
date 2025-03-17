@@ -5,34 +5,34 @@
 **Protocol Support:** TCP, UDP, HTTP, and HTTPS<br>
 
 **Testing Modes:** <br>
-    -Send Mode: Measure throughput by sending data<br>
-    -Receive Mode: Measure throughput by receiving data<br>
-    -Response Mode: Measure round-trip time and jitter<br>
-    -HTTP/HTTPS Mode: Test web server performance<br>
+- Send Mode: Measure throughput by sending data<br>
+- Receive Mode: Measure throughput by receiving data<br>
+- Response Mode: Measure round-trip time and jitter<br>
+- HTTP/HTTPS Mode: Test web server performance<br>
 
 **Metric Collection:** <br>
-    -Throughput (bandwidth) measurement<br>
-    -Packet loss statistics<br>
-    -Latency (round-trip time)<br>
-    -Jitter (variation in latency)<br>
+- Throughput (bandwidth) measurement<br>
+- Packet loss statistics<br>
+- Latency (round-trip time)<br>
+- Jitter (variation in latency)<br>
 
 **Advanced Capabilities:**<br>
-    -Configurable packet size and sending rate<br>
-    -Adjustable buffer sizes<br>
-    -Persistent and non-persistent connections<br>
-    -Customizable TCP congestion control algorithms<br>
-    -Dynamic thread pool for efficient connection handling<br>
+- Configurable packet size and sending rate<br>
+- Adjustable buffer sizes<br>
+- Persistent and non-persistent connections<br>
+- Customizable TCP congestion control algorithms<br>
+- Dynamic thread pool for efficient connection handling<br>
 
 **Cross-Platform Support**: Works on both Linux and Windows<br>
 **HTTPS Security:** Certificate validation and SSL/TLS support<br>
 
 ## Design Principles
-    - **Modularity:** Clear separation of components with well-defined interfaces<br>
-    - **Resource Efficiency:** Proper resource management using RAII principles<br>
-    - **Thread Safety:** Safe concurrent operations using mutexes and atomic variables<br>
-    - **Error Handling:** Comprehensive error detection and reporting<br>
-    - **Cross-Platform Compatibility:** Works seamlessly on both Linux and Windows<br>
-    - **Extensibility:** Easy to add new protocols or test modes<br>
+    -**Modularity:** Clear separation of components with well-defined interfaces<br>
+    -**Resource Efficiency:** Proper resource management using RAII principles<br>
+    -**Thread Safety:** Safe concurrent operations using mutexes and atomic variables<br>
+    -**Error Handling:** Comprehensive error detection and reporting<br>
+    -**Cross-Platform Compatibility:** Works seamlessly on both Linux and Windows<br>
+    -**Extensibility:** Easy to add new protocols or test modes<br>
 
 
 # Server Options<br>
