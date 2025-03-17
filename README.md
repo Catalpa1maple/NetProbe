@@ -27,12 +27,12 @@
 **HTTPS Security:** Certificate validation and SSL/TLS support<br>
 
 ## Design Principles
-    -**Modularity:** Clear separation of components with well-defined interfaces<br>
-    -**Resource Efficiency:** Proper resource management using RAII principles<br>
-    -**Thread Safety:** Safe concurrent operations using mutexes and atomic variables<br>
-    -**Error Handling:** Comprehensive error detection and reporting<br>
-    -**Cross-Platform Compatibility:** Works seamlessly on both Linux and Windows<br>
-    -**Extensibility:** Easy to add new protocols or test modes<br>
+-**Modularity:** Clear separation of components with well-defined interfaces<br>
+-**Resource Efficiency:** Proper resource management using RAII principles<br>
+-**Thread Safety:** Safe concurrent operations using mutexes and atomic variables<br>
+-**Error Handling:** Comprehensive error detection and reporting<br>
+-**Cross-Platform Compatibility:** Works seamlessly on both Linux and Windows<br>
+-**Extensibility:** Easy to add new protocols or test modes<br>
 
 
 # Server Options<br>
