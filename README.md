@@ -1,5 +1,5 @@
 # NetProbe - Network Performance Testing Tool
-*NetProbe* is a comprehensive network performance testing toolkit designed for measuring, analyzing, and optimizing TCP/UDP network performance. <br>It offers a flexible ==client-server architecture== with support for both HTTP and HTTPS protocols, making it ideal for diagnosing network issues, benchmarking network performance, and validating network configurations.<br><br>
+*NetProbe* is a comprehensive network performance testing toolkit designed for measuring, analyzing, and optimizing <mark>TCP/UDP</mark> network performance. <br>It offers a flexible <mark>Client-Server architecture</mark> with support for both HTTP and HTTPS protocols, making it ideal for diagnosing network issues, benchmarking network performance, and validating network configurations.<br><br>
 
 ## Features
 **Protocol Support:** TCP, UDP, HTTP, and HTTPS<br>
@@ -20,16 +20,16 @@
 - Configurable packet size and sending rate<br>
 - Adjustable buffer sizes<br>
 - Persistent and non-persistent connections<br>
-- Customizable ==TCP congestion control algorithms==<br>
-- ==Dynamic thread pool== for efficient connection handling<br>
+- Customizable TCP congestion control algorithms<br>
+- Dynamic thread pool for efficient connection handling<br>
 
 **Cross-Platform Support**: Works on both *Linux* and *Windows*<br>
 **HTTPS Security:** Certificate validation and *SSL/TLS* support<br>
 
 ## Design Principles
 -**Modularity:** Clear separation of components with well-defined interfaces<br>
--**Resource Efficiency:** Proper resource management using ==RAII principles==<br>
--**Thread Safety:** Safe ==concurrent== operations using mutexes and atomic variables<br>
+-**Resource Efficiency:** Proper resource management using RAII principles<br>
+-**Thread Safety:** Safe concurrent operations using mutexes and atomic variables<br>
 -**Error Handling:** Comprehensive error detection and reporting<br>
 -**Cross-Platform Compatibility:** Works seamlessly on both Linux and Windows<br>
 -**Extensibility:** Easy to add new protocols or test modes<br>
